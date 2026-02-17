@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { X, Save, Trash2, Activity, Package, Bot, ClipboardList, Plus } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import { triggerAutoDispatch, shouldTriggerAutoDispatch } from '@/lib/auto-dispatch';
@@ -9,7 +9,7 @@ import { DeliverablesList } from './DeliverablesList';
 import { SessionsList } from './SessionsList';
 import { PlanningTab } from './PlanningTab';
 import { AgentModal } from './AgentModal';
-import type { Task, TaskPriority, TaskStatus } from '@/lib/types';
+import type { Task, TaskPriority, TaskStatus, WorkflowTemplate } from '@/lib/types';
 
 type TabType = 'overview' | 'planning' | 'activity' | 'deliverables' | 'sessions';
 
@@ -32,6 +32,8 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
     window.location.reload();
   }, []);
 
+  const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
+
   const [form, setForm] = useState({
     title: task?.title || '',
     description: task?.description || '',
@@ -39,7 +41,16 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
     status: task?.status || 'inbox' as TaskStatus,
     assigned_agent_id: task?.assigned_agent_id || '',
     due_date: task?.due_date || '',
+    workflow_template_id: task?.workflow_template_id || '',
   });
+
+  // Fetch deployed templates
+  useEffect(() => {
+    fetch('/api/templates?deployed=true')
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setTemplates(data))
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,6 +66,7 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
         status: (!task && usePlanningMode) ? 'planning' : form.status,
         assigned_agent_id: form.assigned_agent_id || null,
         due_date: form.due_date || null,
+        workflow_template_id: form.workflow_template_id || null,
         workspace_id: workspaceId || task?.workspace_id || 'default',
       };
 
@@ -276,6 +288,39 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
               </select>
             </div>
           </div>
+
+          {/* Workflow Template */}
+          {templates.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium mb-1">Workflow Template</label>
+              <select
+                value={form.workflow_template_id}
+                onChange={(e) => {
+                  const templateId = e.target.value;
+                  const template = templates.find(t => t.id === templateId);
+                  const updates: Partial<typeof form> = { workflow_template_id: templateId };
+                  // Auto-suggest first-stage agent when template is selected
+                  if (template?.roles?.length) {
+                    const firstRole = template.roles.sort((a, b) => a.stage_order - b.stage_order)[0];
+                    const firstAgentId = `${template.slug}-${firstRole.role_slug}`;
+                    const agentExists = agents.find(a => a.id === firstAgentId);
+                    if (agentExists) {
+                      updates.assigned_agent_id = firstAgentId;
+                    }
+                  }
+                  setForm({ ...form, ...updates });
+                }}
+                className="w-full bg-mc-bg border border-mc-border rounded px-3 py-2 text-sm focus:outline-none focus:border-mc-accent"
+              >
+                <option value="">No template (direct assignment)</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.roles?.length || 0} stages)
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Assigned Agent */}
           <div>

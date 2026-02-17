@@ -1,12 +1,43 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, ChevronRight, ChevronLeft, Zap, ZapOff, Loader2 } from 'lucide-react';
+import { Plus, ChevronRight, ChevronDown, ChevronLeft, Zap, ZapOff, Loader2 } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import type { Agent, AgentStatus, OpenClawSession } from '@/lib/types';
 import { AgentModal } from './AgentModal';
 
 type FilterTab = 'all' | 'working' | 'standby';
+
+// Known prefix → display name mappings for existing pipelines
+const KNOWN_GROUPS: Record<string, string> = {
+  'feature-dev': 'Feature Dev',
+  'security-audit': 'Security Audit',
+  'job-hunt-mining': 'Job Hunt',
+  'bug-fix': 'Bug Fix',
+};
+
+const getGroup = (agent: Agent): string => {
+  const id = agent.openclaw_agent_id || '';
+  if (id === 'main' || id === 'worker') return 'Core';
+  const prefix = id.split('/')[0];
+  if (prefix && prefix !== id) {
+    return KNOWN_GROUPS[prefix] || prefix.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
+  }
+  return 'Other';
+};
+
+// Derive group order dynamically from actual agents
+const deriveGroupOrder = (agents: Agent[]): string[] => {
+  const groups = new Set<string>();
+  agents.forEach(a => groups.add(getGroup(a)));
+  // Core always first, Other always last, rest alphabetical
+  const sorted = Array.from(groups).filter(g => g !== 'Core' && g !== 'Other').sort();
+  const order: string[] = [];
+  if (groups.has('Core')) order.push('Core');
+  order.push(...sorted);
+  if (groups.has('Other')) order.push('Other');
+  return order;
+};
 
 interface AgentsSidebarProps {
   workspaceId?: string;
@@ -20,6 +51,7 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
   const [connectingAgentId, setConnectingAgentId] = useState<string | null>(null);
   const [activeSubAgents, setActiveSubAgents] = useState(0);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const toggleMinimize = () => setIsMinimized(!isMinimized);
 
@@ -104,8 +136,29 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
     return agent.status === filter;
   });
 
+  const groupOrder = deriveGroupOrder(filteredAgents);
+
+  const groupedAgents = groupOrder.reduce<Record<string, Agent[]>>((acc, group) => {
+    const groupAgents = filteredAgents.filter(a => getGroup(a) === group);
+    if (groupAgents.length > 0) acc[group] = groupAgents;
+    return acc;
+  }, {});
+
+  const toggleGroup = (group: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(group)) {
+        next.delete(group);
+      } else {
+        next.add(group);
+      }
+      return next;
+    });
+  };
+
   const getStatusBadge = (status: AgentStatus) => {
-    const styles = {
+    const styles: Record<string, string> = {
+      idle: 'status-standby',
       standby: 'status-standby',
       working: 'status-working',
       offline: 'status-offline',
@@ -178,11 +231,10 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
 
       {/* Agent List */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
-        {filteredAgents.map((agent) => {
-          const openclawSession = agentOpenClawSessions[agent.id];
-
-          if (isMinimized) {
-            // Minimized view - just avatar
+        {isMinimized ? (
+          /* Minimized view - flat emoji list, no group headers */
+          filteredAgents.map((agent) => {
+            const openclawSession = agentOpenClawSessions[agent.id];
             return (
               <div key={agent.id} className="flex justify-center py-3">
                 <button
@@ -215,89 +267,131 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
                 </button>
               </div>
             );
-          }
+          })
+        ) : (
+          /* Expanded view - grouped by pipeline */
+          groupOrder.map((group) => {
+            const groupAgents = groupedAgents[group];
+            if (!groupAgents) return null;
 
-          // Expanded view - full agent card
-          const isConnecting = connectingAgentId === agent.id;
-          return (
-            <div
-              key={agent.id}
-              className={`w-full rounded hover:bg-mc-bg-tertiary transition-colors ${
-                selectedAgent?.id === agent.id ? 'bg-mc-bg-tertiary' : ''
-              }`}
-            >
-              <button
-                onClick={() => {
-                  setSelectedAgent(agent);
-                  setEditingAgent(agent);
-                }}
-                className="w-full flex items-center gap-3 p-2 text-left"
-              >
-                {/* Avatar */}
-                <div className="text-2xl relative">
-                  {agent.avatar_emoji}
-                  {openclawSession && (
-                    <span className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-mc-bg-secondary" />
-                  )}
-                </div>
+            const isCore = group === 'Core';
+            const isCollapsed = !isCore && collapsedGroups.has(group);
 
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm truncate">{agent.name}</span>
-                    {!!agent.is_master && (
-                      <span className="text-xs text-mc-accent-yellow">★</span>
-                    )}
+            return (
+              <div key={group}>
+                {/* Group Header */}
+                {isCore ? (
+                  <div className="text-xs uppercase tracking-wider text-mc-text-secondary px-2 py-1.5 flex items-center gap-2">
+                    <span>{group}</span>
+                    <span className="bg-mc-bg-tertiary text-mc-text-secondary text-xs px-1.5 py-0 rounded">
+                      {groupAgents.length}
+                    </span>
                   </div>
-                  <div className="text-xs text-mc-text-secondary truncate">
-                    {agent.role}
-                  </div>
-                </div>
-
-                {/* Status */}
-                <span
-                  className={`text-xs px-2 py-0.5 rounded uppercase ${getStatusBadge(
-                    agent.status
-                  )}`}
-                >
-                  {agent.status}
-                </span>
-              </button>
-
-              {/* OpenClaw Connect Button - show for master agents */}
-              {!!agent.is_master && (
-                <div className="px-2 pb-2">
+                ) : (
                   <button
-                    onClick={(e) => handleConnectToOpenClaw(agent, e)}
-                    disabled={isConnecting}
-                    className={`w-full flex items-center justify-center gap-2 px-2 py-1 rounded text-xs transition-colors ${
-                      openclawSession
-                        ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
-                        : 'bg-mc-bg text-mc-text-secondary hover:bg-mc-bg-tertiary hover:text-mc-text'
-                    }`}
+                    onClick={() => toggleGroup(group)}
+                    className="w-full text-xs uppercase tracking-wider text-mc-text-secondary px-2 py-1.5 flex items-center gap-1 hover:text-mc-text transition-colors"
                   >
-                    {isConnecting ? (
-                      <>
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        <span>Connecting...</span>
-                      </>
-                    ) : openclawSession ? (
-                      <>
-                        <Zap className="w-3 h-3" />
-                        <span>OpenClaw Connected</span>
-                      </>
+                    {isCollapsed ? (
+                      <ChevronRight className="w-3 h-3 flex-shrink-0" />
                     ) : (
-                      <>
-                        <ZapOff className="w-3 h-3" />
-                        <span>Connect to OpenClaw</span>
-                      </>
+                      <ChevronDown className="w-3 h-3 flex-shrink-0" />
                     )}
+                    <span>{group}</span>
+                    <span className="bg-mc-bg-tertiary text-mc-text-secondary text-xs px-1.5 py-0 rounded ml-1">
+                      {groupAgents.length}
+                    </span>
                   </button>
-                </div>
-              )}
-            </div>
-          );
-        })}
+                )}
+
+                {/* Group Agents */}
+                {!isCollapsed && groupAgents.map((agent) => {
+                  const openclawSession = agentOpenClawSessions[agent.id];
+                  const isConnecting = connectingAgentId === agent.id;
+
+                  return (
+                    <div
+                      key={agent.id}
+                      className={`w-full rounded hover:bg-mc-bg-tertiary transition-colors ${
+                        selectedAgent?.id === agent.id ? 'bg-mc-bg-tertiary' : ''
+                      }`}
+                    >
+                      <button
+                        onClick={() => {
+                          setSelectedAgent(agent);
+                          setEditingAgent(agent);
+                        }}
+                        className="w-full flex items-center gap-3 p-2 text-left"
+                      >
+                        {/* Avatar */}
+                        <div className="text-2xl relative">
+                          {agent.avatar_emoji}
+                          {openclawSession && (
+                            <span className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-mc-bg-secondary" />
+                          )}
+                        </div>
+
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm truncate">{agent.name}</span>
+                            {!!agent.is_master && (
+                              <span className="text-xs text-mc-accent-yellow">★</span>
+                            )}
+                          </div>
+                          <div className="text-xs text-mc-text-secondary truncate">
+                            {agent.role}
+                          </div>
+                        </div>
+
+                        {/* Status */}
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded uppercase ${getStatusBadge(
+                            agent.status
+                          )}`}
+                        >
+                          {agent.status}
+                        </span>
+                      </button>
+
+                      {/* OpenClaw Connect Button - show for master agents */}
+                      {!!agent.is_master && (
+                        <div className="px-2 pb-2">
+                          <button
+                            onClick={(e) => handleConnectToOpenClaw(agent, e)}
+                            disabled={isConnecting}
+                            className={`w-full flex items-center justify-center gap-2 px-2 py-1 rounded text-xs transition-colors ${
+                              openclawSession
+                                ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                                : 'bg-mc-bg text-mc-text-secondary hover:bg-mc-bg-tertiary hover:text-mc-text'
+                            }`}
+                          >
+                            {isConnecting ? (
+                              <>
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                <span>Connecting...</span>
+                              </>
+                            ) : openclawSession ? (
+                              <>
+                                <Zap className="w-3 h-3" />
+                                <span>OpenClaw Connected</span>
+                              </>
+                            ) : (
+                              <>
+                                <ZapOff className="w-3 h-3" />
+                                <span>Connect to OpenClaw</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })
+        )}
       </div>
 
       {/* Add Agent Button */}

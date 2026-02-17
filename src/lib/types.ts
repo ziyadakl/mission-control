@@ -1,6 +1,6 @@
 // Core types for Mission Control
 
-export type AgentStatus = 'standby' | 'working' | 'offline';
+export type AgentStatus = 'idle' | 'standby' | 'working' | 'offline';
 
 export type TaskStatus = 'planning' | 'inbox' | 'assigned' | 'in_progress' | 'testing' | 'review' | 'done';
 
@@ -33,6 +33,8 @@ export interface Agent {
   user_md?: string;
   agents_md?: string;
   model?: string;
+  openclaw_agent_id?: string;
+  system_prompt?: string;
   created_at: string;
   updated_at: string;
 }
@@ -46,10 +48,13 @@ export interface Task {
   assigned_agent_id: string | null;
   created_by_agent_id: string | null;
   workspace_id: string;
-  business_id: string;
   due_date?: string;
   created_at: string;
   updated_at: string;
+  workflow_template_id?: string;
+  current_stage?: number;
+  // Joined
+  workflow_template?: WorkflowTemplate;
   // Joined fields
   assigned_agent?: Agent;
   created_by_agent?: Agent;
@@ -217,6 +222,41 @@ export interface PlanningState {
   isLocked: boolean;
 }
 
+// Template pipeline types
+export type TemplateCategory = 'development' | 'research' | 'content' | 'operations' | 'custom';
+
+export interface WorkflowTemplate {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  category: TemplateCategory;
+  is_deployed: boolean;
+  is_builtin: boolean;
+  deployed_at?: string;
+  created_at: string;
+  updated_at: string;
+  // Joined
+  roles?: WorkflowRole[];
+}
+
+export interface WorkflowRole {
+  id: string;
+  template_id: string;
+  stage_order: number;
+  role_slug: string;
+  display_name: string;
+  emoji: string;
+  identity_text: string;
+  soul_text: string;
+  model_primary: string;
+  model_fallbacks: string[];
+  tool_profile: string;
+  tools_allow: string[];
+  tools_deny: string[];
+  created_at: string;
+}
+
 // API request/response types
 export interface CreateAgentRequest {
   name: string;
@@ -240,7 +280,6 @@ export interface CreateTaskRequest {
   priority?: TaskPriority;
   assigned_agent_id?: string;
   created_by_agent_id?: string;
-  business_id?: string;
   due_date?: string;
 }
 
