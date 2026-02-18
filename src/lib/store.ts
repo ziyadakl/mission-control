@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { debug } from './debug';
-import type { Agent, Task, Conversation, Message, Event, TaskStatus, OpenClawSession } from './types';
+import type { Agent, Task, Conversation, Message, Event, TaskStatus, OpenClawSession, WorkflowTemplate } from './types';
 
 interface MissionControlState {
   // Data
@@ -12,6 +12,7 @@ interface MissionControlState {
   events: Event[];
   currentConversation: Conversation | null;
   messages: Message[];
+  templates: WorkflowTemplate[];
 
   // OpenClaw state
   agentOpenClawSessions: Record<string, OpenClawSession | null>; // agentId -> session
@@ -27,6 +28,7 @@ interface MissionControlState {
   // Actions
   setAgents: (agents: Agent[]) => void;
   setTasks: (tasks: Task[]) => void;
+  setTemplates: (templates: WorkflowTemplate[]) => void;
   setConversations: (conversations: Conversation[]) => void;
   setEvents: (events: Event[]) => void;
   addEvent: (event: Event) => void;
@@ -62,6 +64,7 @@ export const useMissionControl = create<MissionControlState>((set) => ({
   events: [],
   currentConversation: null,
   messages: [],
+  templates: [],
   agentOpenClawSessions: {},
   openclawMessages: [],
   selectedAgent: null,
@@ -72,6 +75,7 @@ export const useMissionControl = create<MissionControlState>((set) => ({
 
   // Setters
   setAgents: (agents) => set({ agents }),
+  setTemplates: (templates) => set({ templates }),
   setTasks: (tasks) => {
     debug.store('setTasks called', { count: tasks.length });
     set({ tasks });
