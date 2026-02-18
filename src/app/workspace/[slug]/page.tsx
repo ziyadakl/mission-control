@@ -9,6 +9,7 @@ import { AgentsSidebar } from '@/components/AgentsSidebar';
 import { MissionQueue } from '@/components/MissionQueue';
 import { LiveFeed } from '@/components/LiveFeed';
 import { SSEDebugPanel } from '@/components/SSEDebugPanel';
+import { StatsTray } from '@/components/StatsTray';
 import { useMissionControl } from '@/lib/store';
 import { useSSE } from '@/hooks/useSSE';
 import { debug } from '@/lib/debug';
@@ -22,6 +23,7 @@ export default function WorkspacePage() {
     setAgents,
     setTasks,
     setEvents,
+    setTemplates,
     setIsOnline,
     setIsLoading,
     isLoading,
@@ -29,6 +31,7 @@ export default function WorkspacePage() {
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [showStatsTray, setShowStatsTray] = useState(false);
 
   // Connect to SSE for real-time updates
   useSSE();
@@ -68,10 +71,11 @@ export default function WorkspacePage() {
         debug.api('Loading workspace data...', { workspaceId });
         
         // Fetch workspace-scoped data
-        const [agentsRes, tasksRes, eventsRes] = await Promise.all([
+        const [agentsRes, tasksRes, eventsRes, templatesRes] = await Promise.all([
           fetch(`/api/agents?workspace_id=${workspaceId}`),
           fetch(`/api/tasks?workspace_id=${workspaceId}`),
           fetch('/api/events'),
+          fetch('/api/templates?deployed=true'),
         ]);
 
         if (agentsRes.ok) setAgents(await agentsRes.json());
@@ -81,6 +85,7 @@ export default function WorkspacePage() {
           setTasks(tasksData);
         }
         if (eventsRes.ok) setEvents(await eventsRes.json());
+        if (templatesRes.ok) setTemplates(await templatesRes.json());
       } catch (error) {
         console.error('Failed to load data:', error);
       } finally {
@@ -166,7 +171,7 @@ export default function WorkspacePage() {
       clearInterval(connectionCheck);
       clearInterval(taskPoll);
     };
-  }, [workspace, setAgents, setTasks, setEvents, setIsOnline, setIsLoading]);
+  }, [workspace, setAgents, setTasks, setEvents, setTemplates, setIsOnline, setIsLoading]);
 
   if (notFound) {
     return (
@@ -202,7 +207,9 @@ export default function WorkspacePage() {
 
   return (
     <div className="h-screen flex flex-col bg-mc-bg overflow-hidden">
-      <Header workspace={workspace} />
+      <Header workspace={workspace} showStatsTray={showStatsTray} onToggleStats={() => setShowStatsTray(v => !v)} />
+
+      {showStatsTray && <StatsTray />}
 
       <div className="flex-1 flex overflow-hidden">
         {/* Agents Sidebar */}
