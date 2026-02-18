@@ -98,6 +98,14 @@ export function middleware(request: NextRequest) {
     // Fall through to header check below
   }
 
+  // Special case: /api/heartbeat - allow token as query param (for cron)
+  if (pathname === '/api/heartbeat') {
+    const queryToken = request.nextUrl.searchParams.get('token');
+    if (queryToken && queryToken === MC_API_TOKEN) {
+      return NextResponse.next();
+    }
+  }
+
   // Check Authorization header for bearer token
   const authHeader = request.headers.get('authorization');
   
