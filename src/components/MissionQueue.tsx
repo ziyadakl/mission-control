@@ -6,6 +6,7 @@ import { useMissionControl } from '@/lib/store';
 import { triggerAutoDispatch, shouldTriggerAutoDispatch } from '@/lib/auto-dispatch';
 import type { Task, TaskStatus } from '@/lib/types';
 import { TaskModal } from './TaskModal';
+import { DeliverablesOverview } from './DeliverablesOverview';
 import { formatDistanceToNow } from 'date-fns';
 import { getPipelineStageInfo } from '@/lib/pipeline-utils';
 
@@ -126,6 +127,11 @@ export function MissionQueue({ workspaceId }: MissionQueueProps) {
           </button>
         </div>
       </div>
+
+      {/* Deliverables Overview Panel */}
+      {showDeliverables && workspaceId && (
+        <DeliverablesOverview workspaceId={workspaceId} />
+      )}
 
       {/* Kanban Columns */}
       <div className="flex-1 flex gap-3 p-3 overflow-x-auto">

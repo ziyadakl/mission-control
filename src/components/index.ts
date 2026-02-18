@@ -5,3 +5,4 @@ export { MissionQueue } from './MissionQueue';
 export { TaskModal } from './TaskModal';
 export { LiveFeed } from './LiveFeed';
 export { StatsTray } from './StatsTray';
+export { DeliverablesOverview } from './DeliverablesOverview';
