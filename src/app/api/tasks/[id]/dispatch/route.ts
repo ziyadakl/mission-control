@@ -230,7 +230,7 @@ If you need help or clarification, ask the orchestrator.`;
       await client.call('chat.send', {
         sessionKey,
         message: taskMessage,
-        idempotencyKey: `dispatch-${task.id}-${Date.now()}`
+        idempotencyKey: `dispatch-${task.id}-${task.updated_at}`
       });
 
       // Update task status to in_progress
