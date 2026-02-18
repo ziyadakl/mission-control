@@ -1,0 +1,13 @@
+{
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.expand": false,
+  "explorer.fileNesting.patterns": {
+    "package.json": "package-lock.json, .npmrc",
+    "tsconfig.json": "tsconfig.*.json, tsconfig.tsbuildinfo",
+    "next.config.*": "next-env.d.ts, postcss.config.*, ecosystem.config.*",
+    "tailwind.config.*": ".eslintrc*",
+    ".gitignore": ".claudeignore, .editorconfig",
+    ".env.example": ".env, .env.*",
+    "CLAUDE.md": "AGENTS.md, .mcp.json, .claudeignore, opencode.json"
+  }
+}
