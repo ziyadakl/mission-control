@@ -109,16 +109,30 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       }
     }
 
+    // Batch-fetch active sessions for all agents that have dispatchable tasks (avoids N+1)
+    const agentIds = [...new Set(dispatchableTasks.map(t => t.assigned_agent_id).filter(Boolean))];
+    const sessionByAgent = new Map<string, { id: string; openclaw_session_id: string }>();
+
+    if (agentIds.length > 0) {
+      const { data: activeSessions } = await supabase
+        .from('openclaw_sessions')
+        .select('id, openclaw_session_id, agent_id')
+        .in('agent_id', agentIds)
+        .eq('status', 'active');
+
+      for (const session of activeSessions ?? []) {
+        // Keep only the first (most recent) session per agent if duplicates exist
+        if (!sessionByAgent.has(session.agent_id)) {
+          sessionByAgent.set(session.agent_id, { id: session.id, openclaw_session_id: session.openclaw_session_id });
+        }
+      }
+    }
+
     // Process inbox/assigned tasks with an assigned agent
     for (const task of dispatchableTasks) {
       if (actionsRemaining <= 0) break;
 
-      const { data: activeSession } = await supabase
-        .from('openclaw_sessions')
-        .select('id, openclaw_session_id')
-        .eq('agent_id', task.assigned_agent_id)
-        .eq('status', 'active')
-        .maybeSingle();
+      const activeSession = sessionByAgent.get(task.assigned_agent_id) ?? null;
 
       if (activeSession) {
         console.log(
@@ -177,16 +191,27 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // Check in_progress tasks for staleness
     const staleThreshold = new Date(Date.now() - STALE_MINUTES * 60 * 1000).toISOString();
 
-    for (const task of inProgressTasks) {
-      const { data: lastActivity } = await supabase
-        .from('task_activities')
-        .select('created_at')
-        .eq('task_id', task.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
+    // Batch-fetch latest activity timestamps for all in_progress tasks (avoids N+1)
+    const inProgressTaskIds = inProgressTasks.map(t => t.id);
+    const lastActivityByTask = new Map<string, string>();
 
-      const lastActiveAt = lastActivity?.created_at ?? task.updated_at;
+    if (inProgressTaskIds.length > 0) {
+      const { data: recentActivities } = await supabase
+        .from('task_activities')
+        .select('task_id, created_at')
+        .in('task_id', inProgressTaskIds)
+        .order('created_at', { ascending: false });
+
+      // Results are ordered desc; first occurrence of each task_id is its latest activity
+      for (const activity of recentActivities ?? []) {
+        if (!lastActivityByTask.has(activity.task_id)) {
+          lastActivityByTask.set(activity.task_id, activity.created_at);
+        }
+      }
+    }
+
+    for (const task of inProgressTasks) {
+      const lastActiveAt = lastActivityByTask.get(task.id) ?? task.updated_at;
       const isStale = lastActiveAt < staleThreshold;
 
       if (isStale) {

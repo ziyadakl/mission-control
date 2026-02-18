@@ -14,9 +14,14 @@ export async function GET(request: NextRequest) {
     const workspaceId = searchParams.get('workspace_id');
     const assignedAgentId = searchParams.get('assigned_agent_id');
 
+    const rawLimit = parseInt(searchParams.get('limit') || '200', 10);
+    const limit = Math.min(Math.max(isNaN(rawLimit) ? 200 : rawLimit, 1), 200);
+
     let sql = `
       SELECT
-        t.*,
+        t.id, t.title, t.description, t.status, t.priority,
+        t.assigned_agent_id, t.created_by_agent_id, t.workspace_id,
+        t.due_date, t.created_at, t.updated_at,
         aa.name as assigned_agent_name,
         aa.avatar_emoji as assigned_agent_emoji,
         ca.name as created_by_agent_name
@@ -51,7 +56,8 @@ export async function GET(request: NextRequest) {
       params.push(assignedAgentId);
     }
 
-    sql += ' ORDER BY t.created_at DESC';
+    sql += ' ORDER BY t.created_at DESC LIMIT ?';
+    params.push(limit);
 
     const tasks = queryAll<Task & { assigned_agent_name?: string; assigned_agent_emoji?: string; created_by_agent_name?: string }>(sql, params);
 

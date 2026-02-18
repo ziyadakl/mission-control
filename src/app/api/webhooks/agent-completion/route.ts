@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { createHmac } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { queryOne, queryAll, run } from '@/lib/db';
 import type { Task, Agent, OpenClawSession } from '@/lib/types';
 
@@ -23,7 +23,14 @@ function verifyWebhookSignature(signature: string, rawBody: string): boolean {
     .update(rawBody)
     .digest('hex');
 
-  return signature === expectedSignature;
+  if (signature.length !== expectedSignature.length) {
+    return false;
+  }
+
+  return timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(expectedSignature)
+  );
 }
 
 /**
