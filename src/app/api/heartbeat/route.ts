@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/db';
 import { getMissionControlUrl } from '@/lib/config';
 
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+
 const STALE_MINUTES = 30;
 const MAX_ACTIONS_PER_RUN = 5;
 
