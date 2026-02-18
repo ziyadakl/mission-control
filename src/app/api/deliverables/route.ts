@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('task_deliverables')
-      .select('*, task:tasks!task_id(id, title, status, workspace_id)')
+      .select('*, task:tasks!inner(id, title, status, workspace_id)')
       .eq('task.workspace_id', workspaceId)
       .order('created_at', { ascending: false })
       .limit(limit);

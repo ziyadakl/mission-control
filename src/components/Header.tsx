@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Zap, Settings, ChevronLeft, LayoutGrid, BarChart2 } from 'lucide-react';
@@ -50,19 +50,33 @@ export function Header({ workspace, showStatsTray, onToggleStats }: HeaderProps)
   const activeAgents = workingAgents + activeSubAgents;
   const tasksInQueue = tasks.filter((t) => t.status !== 'done' && t.status !== 'review').length;
 
-  // Additional stats for expanded header
-  const todayMidnight = new Date(currentTime);
-  todayMidnight.setHours(0, 0, 0, 0);
+  // todayMidnight only changes once per day — key on datestring, not the full timestamp
+  const todayMidnight = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTime.toDateString()]);
 
-  const doneCount = tasks.filter((t) => t.status === 'done').length;
-  const nonPlanningCount = tasks.filter((t) => t.status !== 'planning').length;
-  const donePercent = nonPlanningCount > 0 ? Math.round((doneCount / nonPlanningCount) * 100) : 0;
-  const pipelineCount = tasks.filter(
-    (t) => t.workflow_template_id && t.status !== 'done' && t.status !== 'review'
-  ).length;
-  const todayCount = tasks.filter(
-    (t) => t.status === 'done' && new Date(t.updated_at) >= todayMidnight
-  ).length;
+  // Recompute stats only when tasks list or the calendar day changes (not every clock tick)
+  const { doneCount, nonPlanningCount, donePercent, pipelineCount, todayCount } = useMemo(() => {
+    let done = 0, nonPlanning = 0, pipeline = 0, today = 0;
+    for (const t of tasks) {
+      if (t.status !== 'planning') nonPlanning++;
+      if (t.status === 'done') {
+        done++;
+        if (new Date(t.updated_at) >= todayMidnight) today++;
+      }
+      if (t.workflow_template_id && t.status !== 'done' && t.status !== 'review') pipeline++;
+    }
+    return {
+      doneCount: done,
+      nonPlanningCount: nonPlanning,
+      donePercent: nonPlanning > 0 ? Math.round((done / nonPlanning) * 100) : 0,
+      pipelineCount: pipeline,
+      todayCount: today,
+    };
+  }, [tasks, todayMidnight]);
 
   return (
     <header className="h-14 bg-mc-bg-secondary border-b border-mc-border flex items-center justify-between px-4">
@@ -133,6 +147,7 @@ export function Header({ workspace, showStatsTray, onToggleStats }: HeaderProps)
                 : 'text-mc-text-secondary hover:text-mc-text'
             }`}
             title="Toggle Stats"
+            aria-label="Toggle Stats"
           >
             <BarChart2 className="w-4 h-4" />
           </button>
