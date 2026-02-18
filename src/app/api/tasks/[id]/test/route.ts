@@ -108,12 +108,14 @@ export async function POST(
     const browser = await chromium.launch({ headless: true });
     const results: TestResult[] = [];
 
-    for (const deliverable of deliverables) {
-      const result = await testDeliverable(browser, deliverable, taskId);
-      results.push(result);
+    try {
+      for (const deliverable of deliverables) {
+        const result = await testDeliverable(browser, deliverable, taskId);
+        results.push(result);
+      }
+    } finally {
+      await browser.close();
     }
-
-    await browser.close();
 
     // Determine overall pass/fail
     const passed = results.every(r => r.passed);
@@ -381,63 +383,66 @@ async function testDeliverable(
     }
 
     const context = await browser.newContext();
-    const page = await context.newPage();
 
-    // Capture console messages
-    page.on('console', msg => {
-      if (msg.type() === 'error') {
-        consoleErrors.push(msg.text());
-      } else if (msg.type() === 'warning') {
-        consoleWarnings.push(msg.text());
-      }
-    });
+    try {
+      const page = await context.newPage();
 
-    // Capture page errors
-    page.on('pageerror', error => {
-      consoleErrors.push(`Page error: ${error.message}`);
-    });
-
-    // Capture failed resource requests
-    page.on('requestfailed', request => {
-      const url = request.url();
-      const failure = request.failure();
-      const resourceType = request.resourceType();
-
-      let type: ResourceError['type'] = 'other';
-      if (resourceType === 'image') type = 'image';
-      else if (resourceType === 'script') type = 'script';
-      else if (resourceType === 'stylesheet') type = 'stylesheet';
-      else if (resourceType === 'document') type = 'link';
-
-      resourceErrors.push({
-        type,
-        url,
-        error: failure?.errorText || 'Request failed'
+      // Capture console messages
+      page.on('console', msg => {
+        if (msg.type() === 'error') {
+          consoleErrors.push(msg.text());
+        } else if (msg.type() === 'warning') {
+          consoleWarnings.push(msg.text());
+        }
       });
-    });
 
-    // Load page
-    const response = await page.goto(testUrl, {
-      waitUntil: 'networkidle',
-      timeout: 30000
-    });
+      // Capture page errors
+      page.on('pageerror', error => {
+        consoleErrors.push(`Page error: ${error.message}`);
+      });
 
-    httpStatus = response?.status() || null;
+      // Capture failed resource requests
+      page.on('requestfailed', request => {
+        const url = request.url();
+        const failure = request.failure();
+        const resourceType = request.resourceType();
 
-    // For HTTP URLs, check for non-success status codes
-    if (isHttpUrl(testUrl) && httpStatus && (httpStatus < 200 || httpStatus >= 400)) {
-      consoleErrors.push(`HTTP error: Server returned status ${httpStatus}`);
+        let type: ResourceError['type'] = 'other';
+        if (resourceType === 'image') type = 'image';
+        else if (resourceType === 'script') type = 'script';
+        else if (resourceType === 'stylesheet') type = 'stylesheet';
+        else if (resourceType === 'document') type = 'link';
+
+        resourceErrors.push({
+          type,
+          url,
+          error: failure?.errorText || 'Request failed'
+        });
+      });
+
+      // Load page
+      const response = await page.goto(testUrl, {
+        waitUntil: 'networkidle',
+        timeout: 30000
+      });
+
+      httpStatus = response?.status() || null;
+
+      // For HTTP URLs, check for non-success status codes
+      if (isHttpUrl(testUrl) && httpStatus && (httpStatus < 200 || httpStatus >= 400)) {
+        consoleErrors.push(`HTTP error: Server returned status ${httpStatus}`);
+      }
+
+      // Wait a bit for any async JS to run
+      await page.waitForTimeout(1000);
+
+      // Take screenshot
+      const screenshotFilename = `${taskId}-${deliverable.id}-${Date.now()}.png`;
+      screenshotPath = path.join(SCREENSHOTS_DIR, screenshotFilename);
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+    } finally {
+      await context.close();
     }
-
-    // Wait a bit for any async JS to run
-    await page.waitForTimeout(1000);
-
-    // Take screenshot
-    const screenshotFilename = `${taskId}-${deliverable.id}-${Date.now()}.png`;
-    screenshotPath = path.join(SCREENSHOTS_DIR, screenshotFilename);
-    await page.screenshot({ path: screenshotPath, fullPage: true });
-
-    await context.close();
 
     // Determine pass/fail
     // Fail conditions: console errors, CSS errors, or resource loading errors
