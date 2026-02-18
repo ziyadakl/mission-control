@@ -62,8 +62,42 @@ export const CreateDeliverableSchema = z.object({
   description: z.string().optional(),
 });
 
+// Event validation schema
+export const CreateEventSchema = z.object({
+  type: z.string().min(1, 'Type is required').max(50, 'Type must be 50 characters or less'),
+  message: z.string().min(1, 'Message is required').max(10000, 'Message must be 10000 characters or less'),
+  agent_id: z.string().uuid().optional(),
+  task_id: z.string().uuid().optional(),
+  metadata: z
+    .record(z.unknown())
+    .optional()
+    .refine(
+      (val) => {
+        if (val === undefined) return true;
+        return JSON.stringify(val).length <= 50000;
+      },
+      { message: 'Metadata must not exceed 50KB' }
+    ),
+});
+
+// Agent validation schema
+export const CreateAgentSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(100, 'Name must be 100 characters or less'),
+  role: z.string().min(1, 'Role is required').max(100, 'Role must be 100 characters or less'),
+  description: z.string().max(5000, 'Description must be 5000 characters or less').optional(),
+  avatar_emoji: z.string().max(10, 'Avatar emoji must be 10 characters or less').optional(),
+  is_master: z.boolean().optional(),
+  workspace_id: z.string().max(100, 'Workspace ID must be 100 characters or less').optional(),
+  soul_md: z.string().max(50000, 'soul_md must be 50000 characters or less').optional(),
+  user_md: z.string().max(50000, 'user_md must be 50000 characters or less').optional(),
+  agents_md: z.string().max(50000, 'agents_md must be 50000 characters or less').optional(),
+  model: z.string().max(50, 'Model must be 50 characters or less').optional(),
+});
+
 // Type exports for use in routes
 export type CreateTaskInput = z.infer<typeof CreateTaskSchema>;
 export type UpdateTaskInput = z.infer<typeof UpdateTaskSchema>;
 export type CreateActivityInput = z.infer<typeof CreateActivitySchema>;
 export type CreateDeliverableInput = z.infer<typeof CreateDeliverableSchema>;
+export type CreateEventInput = z.infer<typeof CreateEventSchema>;
+export type CreateAgentInput = z.infer<typeof CreateAgentSchema>;

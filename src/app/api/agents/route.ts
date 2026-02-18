@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { queryAll, queryOne, run } from '@/lib/db';
+import { CreateAgentSchema } from '@/lib/validation';
 import type { Agent, CreateAgentRequest } from '@/lib/types';
 
 // GET /api/agents - List all agents
@@ -11,11 +12,11 @@ export async function GET(request: NextRequest) {
     let agents: Agent[];
     if (workspaceId) {
       agents = queryAll<Agent>(`
-        SELECT * FROM agents WHERE workspace_id = ? ORDER BY is_master DESC, name ASC
+        SELECT * FROM agents WHERE workspace_id = ? ORDER BY is_master DESC, name ASC LIMIT 100
       `, [workspaceId]);
     } else {
       agents = queryAll<Agent>(`
-        SELECT * FROM agents ORDER BY is_master DESC, name ASC
+        SELECT * FROM agents ORDER BY is_master DESC, name ASC LIMIT 100
       `);
     }
     return NextResponse.json(agents);
@@ -30,10 +31,16 @@ export async function POST(request: NextRequest) {
   try {
     const body: CreateAgentRequest = await request.json();
 
-    if (!body.name || !body.role) {
-      return NextResponse.json({ error: 'Name and role are required' }, { status: 400 });
+    // Validate input with Zod
+    const validation = CreateAgentSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: validation.error.issues },
+        { status: 400 }
+      );
     }
 
+    const validatedData = validation.data;
     const id = uuidv4();
     const now = new Date().toISOString();
 
@@ -42,16 +49,16 @@ export async function POST(request: NextRequest) {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
-        body.name,
-        body.role,
-        body.description || null,
-        body.avatar_emoji || '🤖',
-        body.is_master ? 1 : 0,
-        (body as { workspace_id?: string }).workspace_id || 'default',
-        body.soul_md || null,
-        body.user_md || null,
-        body.agents_md || null,
-        body.model || null,
+        validatedData.name,
+        validatedData.role,
+        validatedData.description || null,
+        validatedData.avatar_emoji || '🤖',
+        validatedData.is_master ? 1 : 0,
+        validatedData.workspace_id || 'default',
+        validatedData.soul_md || null,
+        validatedData.user_md || null,
+        validatedData.agents_md || null,
+        validatedData.model || null,
         now,
         now,
       ]
@@ -61,7 +68,7 @@ export async function POST(request: NextRequest) {
     run(
       `INSERT INTO events (id, type, agent_id, message, created_at)
        VALUES (?, ?, ?, ?, ?)`,
-      [uuidv4(), 'agent_joined', id, `${body.name} joined the team`, now]
+      [uuidv4(), 'agent_joined', id, `${validatedData.name} joined the team`, now]
     );
 
     const agent = queryOne<Agent>('SELECT * FROM agents WHERE id = ?', [id]);
