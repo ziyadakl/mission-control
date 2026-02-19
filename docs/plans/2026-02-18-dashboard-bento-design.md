@@ -1,37 +1,83 @@
 # Dashboard Bento Box — Design Document
 
 **Date:** 2026-02-18
-**Status:** Approved
-**Approach:** Static bento grid at `/dashboard` with 8 widgets
+**Status:** Approved (v2 — revised from separate page to unified sidebar layout)
+**Approach:** Single-page app with persistent sidebar + swappable content area
 
 ---
 
 ## Context
 
-Mission Control's current home page (`/`) shows workspace cards with minimal data. The workspace view (`/workspace/[slug]`) has a Kanban board, agent sidebar, and live feed — good for task execution, but lacks a high-level operational overview.
+Mission Control currently has two separate pages: a home page (`/`) with workspace cards, and a workspace page (`/workspace/[slug]`) with Kanban + agents + live feed. Navigating between them loses context and feels disconnected.
 
-Research into AI agent orchestration dashboards (Langfuse, LangGraph Studio, AutoGen Studio, Vercel, Grafana, Linear) and industry trends shows the best dashboards reduce time-to-decision by surfacing: agent health, cost, velocity, and items needing attention — all at a glance.
+Research into AI agent orchestration dashboards (Langfuse, LangGraph Studio, Vercel, Linear, Grafana) shows the best dashboards use a persistent sidebar for navigation with a content area that switches views — like Slack, Discord, or Linear.
 
-The user wants a "command center" feel: agent health, activity summary, attention items, velocity, weather, cost, and workspace navigation.
+The user wants a unified "command center" feel: one page with a sidebar listing Overview + workspaces. Overview shows a bento widget grid with cross-workspace aggregate data. Clicking a workspace shows that workspace's Kanban + agents + live feed.
 
 ---
 
 ## Architecture
 
-**Route:** `/dashboard` — new Next.js page, linked from the header navigation.
+**Single-page layout** replacing both `/` and `/workspace/[slug]`. The root `/` renders the unified dashboard. URL updates via shallow routing to track active view (e.g., `/?view=overview` or `/?workspace=openclaw`).
 
-**Layout:** CSS Grid bento box. No chart libraries or drag-and-drop dependencies. Charts built with pure CSS/SVG. Responsive: 4 columns (desktop), 2 columns (tablet), 1 column (mobile).
+**Layout structure:**
+```
+┌────────────┬─────────────────────────────────────┐
+│            │                                     │
+│  Sidebar   │        Content Area                 │
+│  (fixed)   │        (swaps based on selection)   │
+│            │                                     │
+│            │                                     │
+└────────────┴─────────────────────────────────────┘
+```
 
-**Data strategy:** Fetch on mount via existing API endpoints. Real-time updates via SSE (reuse existing `useSSE` hook). Weather cached 30 min via a thin API proxy route. Cost data from a new `daily_stats` Supabase table aggregated from the agent completion webhook.
+**Data strategy:** Fetch on mount via existing API endpoints. Real-time updates via SSE (reuse existing `useSSE` hook). Weather cached 30 min via a thin API proxy route. Cost data from a new `daily_stats` Supabase table.
 
 **No new dependencies.** All charts are SVG/CSS. Weather via Open-Meteo (free, no API key).
 
 ---
 
-## Layout
+## Sidebar
+
+Always visible on desktop (collapsible to icon rail). Slide-in drawer on mobile (triggered by hamburger).
 
 ```
-Desktop (4 cols):
+Desktop (expanded):              Desktop (collapsed):
+┌────────────────────┐           ┌────┐
+│ ⚡ Mission Control  │           │ ⚡  │
+│                    │           │    │
+│ 📊 Overview         │           │ 📊  │
+│                    │           │    │
+│ WORKSPACES         │           │ ── │
+│  ● OpenClaw    (5) │           │ O  │
+│  ● Beta        (2) │           │ B  │
+│  + New             │           │ +  │
+│                    │           │    │
+│ ──────────────     │           │ ── │
+│ ⚙ Settings         │           │ ⚙  │
+│                    │           │    │
+│ 🟢 Online  12:34   │           │ 🟢  │
+└────────────────────┘           └────┘
+```
+
+**Elements:**
+- **App logo + title** — top, clickable to go to Overview
+- **Overview** — always first, highlighted when active. Cross-workspace aggregate view.
+- **WORKSPACES section** — lists all workspaces with active task count badge. Selected workspace is highlighted. Each workspace item shows: name + non-done task count.
+- **+ New Workspace** — inline creation trigger
+- **Settings** — bottom section, links to existing settings page
+- **Status footer** — online/offline dot + clock (moved from current header)
+
+**Mobile:** Hamburger icon in a thin top bar opens sidebar as a slide-in drawer overlay. Same pattern as current AgentsSidebar mobile drawer.
+
+---
+
+## Content Area: Overview (Bento Grid)
+
+When **Overview** is selected in the sidebar, the content area shows a bento widget grid with cross-workspace aggregate data.
+
+**Layout (CSS Grid, 4 columns):**
+```
 ┌──────────────────┬──────────┬──────────┐
 │  Agent Health     │ Weather  │ System   │
 │  Grid (2 cols)    │ + Time   │ Health   │
@@ -45,13 +91,28 @@ Desktop (4 cols):
 │                   │ (1 col)  │ (1 col)  │
 └──────────────────┴──────────┴──────────┘
 
-Tablet (2 cols):
-Widgets flow naturally in 2-column grid, each widget
-taking 1 or 2 columns as specified above.
-
-Mobile (1 col):
-All widgets stack vertically in a single column.
+Tablet: 2 columns. Mobile: 1 column stacked.
 ```
+
+---
+
+## Content Area: Workspace View
+
+When a **workspace** is selected in the sidebar, the content area shows the existing workspace layout — Kanban board, agents panel, and live feed. These are the existing components (`MissionQueue`, `AgentsSidebar` as an inline panel, `LiveFeed`) reused in the content area.
+
+```
+┌──────────────────────────────────────────────────┐
+│  [Header bar: workspace name + 5 stat counters]  │
+│  ┌─────────┬────────────────────┬──────────┐     │
+│  │ Agents  │  Kanban Board      │ Live     │     │
+│  │ Panel   │  (MissionQueue)    │ Feed     │     │
+│  │         │                    │          │     │
+│  │         │                    │          │     │
+│  └─────────┴────────────────────┴──────────┘     │
+└──────────────────────────────────────────────────┘
+```
+
+The agents panel and live feed are collapsible within the content area (same as today), independent of the main sidebar.
 
 ---
 
@@ -59,7 +120,7 @@ All widgets stack vertically in a single column.
 
 ### 1. Agent Health Grid (2-col wide)
 
-Compact grid of agent cards showing operational status at a glance.
+Compact grid of agent cards showing operational status across ALL workspaces.
 
 Each card:
 - Initials circle (reuse existing pattern from AgentsSidebar)
@@ -68,9 +129,9 @@ Each card:
 - Last activity: relative time ("3m ago")
 - Active tasks count: number badge
 
-Sort order: working first, then idle, then error/offline. Click navigates to the agent's workspace with the agent selected.
+Sort: working first, then idle, then error/offline. Click switches sidebar to that agent's workspace and selects the agent.
 
-**Data:** `GET /api/agents` (all workspaces) + SSE `agent_status_changed` events for real-time updates.
+**Data:** `GET /api/agents` (no workspace filter — all agents) + SSE for real-time updates.
 
 ### 2. Weather + Time (1-col)
 
@@ -94,40 +155,35 @@ Sort order: working first, then idle, then error/offline. Click navigates to the
 
 Prioritized list of action items requiring human intervention. Max 5 shown.
 
-Item types (in priority order):
+Item types (priority order):
 1. Agents with error status
 2. Tasks stuck in `in_progress` > 2 hours with no activity
 3. Tasks in `review` status awaiting approval
 4. Heartbeat failures or stale heartbeat (> 10 min)
 
-Each item: priority-colored icon + description + action link (navigates to task/agent). Empty state: green checkmark with "All clear — nothing needs your attention."
+Each item: priority-colored icon + description + action link (clicks navigate to the relevant workspace + task/agent). Empty state: green checkmark "All clear."
 
-**Data:** Computed client-side from `GET /api/agents`, `GET /api/tasks`, heartbeat status. Refreshed via SSE events + 60-second poll fallback.
+**Data:** Computed client-side from `GET /api/agents`, `GET /api/tasks`, heartbeat status. SSE + 60s poll.
 
 ### 5. Weekly Velocity Chart (2-col wide)
 
-Simple bar chart: tasks completed per day, last 7 days.
+Bar chart: tasks completed per day, last 7 days.
 
-- 7 vertical bars with day-of-week labels (Mon, Tue, ...)
+- 7 vertical bars with day-of-week labels
 - Hover/tap shows exact count
 - Built with pure SVG (no chart library)
-- Current day's bar uses accent color, past days use muted color
+- Current day bar uses accent color
 
-**Data:** `GET /api/events?type=task_completed&since=7d` grouped by `created_at` date. Fetched on mount only.
+**Data:** `GET /api/events?limit=200` filtered client-side for `type=task_completed`, grouped by date. Fetched on mount.
 
 ### 6. Activity Summary (2-col wide)
 
-Overview of the last 24 hours.
+Last 24 hours overview.
 
-Top section (stat pills):
-- Tasks completed count
-- Tasks created count
-- Agent dispatches count
-- Errors count
+Top: stat pills (tasks completed, created, dispatched, errors).
+Bottom: scrollable list of last 10 events (icon + message + relative time). Same rendering as LiveFeed, no filters.
 
-Bottom section: scrollable list of last 10 events in compact format (icon + message + relative time). Same rendering as LiveFeed but no filters.
-
-**Data:** `GET /api/events?since=24h` for the list. Stats computed from event types. SSE for real-time updates.
+**Data:** `GET /api/events?limit=50`. Stats computed from event types. SSE for real-time.
 
 ### 7. Token/Cost Tracker (1-col)
 
@@ -135,16 +191,15 @@ Bottom section: scrollable list of last 10 events in compact format (icon + mess
 - This week total: `$XX.XX`
 - 7-day sparkline (tiny inline SVG, ~30px tall)
 
-**Data:** New `daily_stats` Supabase table with columns: `date`, `total_tokens`, `estimated_cost`, `tasks_completed`, `workspace_id`. Aggregated from the existing agent completion webhook (`/api/webhooks/agent-completion`) which already receives activity data. New API route: `GET /api/dashboard/stats`.
+**Data:** New `daily_stats` Supabase table. New API route: `GET /api/dashboard/stats`.
 
 ### 8. Workspace Shortcuts (1-col)
 
-- Compact list of workspaces
-- Each: workspace name + task count badge (colored by status distribution)
-- Click navigates to `/workspace/[slug]`
-- Max 5 shown, "View all" link if more
+- Compact list of workspaces with task count badges
+- Click switches the sidebar selection to that workspace (loads its Kanban)
+- Mirrors the sidebar workspace list but with richer stats
 
-**Data:** `GET /api/workspaces?stats=true` (existing endpoint). Fetched on mount.
+**Data:** `GET /api/workspaces?stats=true` (existing endpoint).
 
 ---
 
@@ -171,20 +226,44 @@ Returns aggregated stats for the cost widget. Query: last 7 days of `daily_stats
 
 ### 3. `GET /api/dashboard/weather`
 
-Thin proxy to Open-Meteo API. Accepts `lat` and `lon` query params. Caches response for 30 minutes using in-memory cache (simple Map with TTL). Returns `{ temp, condition, city }`.
+Thin proxy to Open-Meteo API. Accepts `lat` and `lon` query params. Caches 30 min in-memory. Returns `{ temp, condition, city }`.
 
 ### 4. Update webhook to log token usage
 
-In `/api/webhooks/agent-completion`, after processing the completion event, upsert into `daily_stats` with the token count and estimated cost from the webhook payload.
+In `/api/webhooks/agent-completion`, upsert into `daily_stats` with token count and estimated cost from the webhook payload.
 
 ---
 
-## Navigation
+## Routing
 
-Add "Dashboard" link to the Header component:
-- Desktop: text link next to "Mission Control" title
-- Mobile: icon in the header bar
-- The `/` home page remains unchanged (workspace cards)
+**URL scheme:** Single root page at `/`.
+- `/?view=overview` — Overview bento grid (default)
+- `/?workspace=<slug>` — Workspace Kanban view
+- `/?workspace=<slug>&task=<id>` — Workspace view with TaskModal open
+
+The sidebar selection syncs with URL params via `useSearchParams()`. Browser back/forward works naturally. The Settings page (`/settings`) remains a separate route.
+
+---
+
+## Migration from Current Layout
+
+**Removed:**
+- `/` home page (WorkspaceDashboard component) — replaced by sidebar + overview
+- `/workspace/[slug]` page — workspace view is now rendered in the content area
+- Current `Header.tsx` breadcrumb navigation — replaced by sidebar
+
+**Reused (embedded in content area):**
+- `MissionQueue` component — Kanban board (unchanged)
+- `AgentsSidebar` component — agents panel within workspace content area (not the main sidebar)
+- `LiveFeed` component — event feed within workspace content area
+- `TaskModal` component — task detail modal (unchanged)
+- `StatsTray` component — togglable stats in workspace header bar
+
+**New components:**
+- `AppSidebar` — the main navigation sidebar
+- `DashboardOverview` — bento widget grid
+- `DashboardLayout` — root layout with sidebar + content area
+- Individual widget components (8 widgets)
 
 ---
 
@@ -192,9 +271,11 @@ Add "Dashboard" link to the Header component:
 
 | Decision | Rationale |
 |---|---|
-| Static bento layout, no drag-and-drop | Single-operator dashboard. Opinionated layout > customization complexity. Can add later. |
-| No chart library | Only need bar chart + sparkline. Pure SVG keeps bundle small, no new dependency. |
+| Unified single-page vs separate routes | User wants one dashboard, not two pages. Reduces context switching. |
+| Sidebar + content area pattern | Industry standard (Linear, Slack, Discord). Persistent nav with swappable views. |
+| URL search params for view state | Preserves browser history/bookmarks without adding route complexity. |
+| Reuse existing workspace components | MissionQueue, AgentsSidebar, LiveFeed already work well. No need to rebuild. |
+| Static bento layout, no drag-and-drop | Single-operator. Opinionated layout beats customization complexity. |
+| No chart library | Only need bar chart + sparkline. Pure SVG keeps bundle small. |
 | Open-Meteo for weather | Free, no API key, reliable. Proxy route avoids CORS. |
-| `daily_stats` table for cost | Incrementally updated from existing webhook. No new data pipeline. Simple aggregation. |
-| CSS Grid over flexbox | Bento layout is inherently a grid problem. CSS Grid handles asymmetric sizes naturally. |
-| Per-minute clock, not per-second | Reduces unnecessary re-renders. Per-second clock on the dashboard is visual noise. |
+| `daily_stats` table for cost | Incrementally updated from existing webhook. Simple aggregation. |
