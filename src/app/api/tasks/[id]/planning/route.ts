@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, queryAll, queryOne, run } from '@/lib/db';
+import { getSupabase } from '@/lib/db';
 import { getOpenClawClient } from '@/lib/openclaw/client';
 import { broadcast } from '@/lib/events';
 import { extractJSON } from '@/lib/planning-utils';
@@ -16,25 +16,26 @@ export async function GET(
   const { id: taskId } = await params;
 
   try {
+    const supabase = getSupabase();
+
     // Get task
-    const task = getDb().prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) as {
-      id: string;
-      title: string;
-      description: string;
-      status: string;
-      planning_session_key?: string;
-      planning_messages?: string;
-      planning_complete?: number;
-      planning_spec?: string;
-      planning_agents?: string;
-    } | undefined;
-    
+    const { data: task, error: taskError } = await supabase
+      .from('tasks')
+      .select('id, title, description, status, planning_session_key, planning_messages, planning_complete, planning_spec, planning_agents')
+      .eq('id', taskId)
+      .maybeSingle();
+
+    if (taskError) {
+      console.error('Failed to get task:', taskError);
+      return NextResponse.json({ error: 'Failed to get planning state' }, { status: 500 });
+    }
+
     if (!task) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 });
     }
 
-    // Parse planning messages from JSON
-    const messages = task.planning_messages ? JSON.parse(task.planning_messages) : [];
+    // planning_messages is stored as JSONB, auto-parsed by Supabase
+    const messages = task.planning_messages ?? [];
 
     // Find the latest question (last assistant message with question structure)
     const lastAssistantMessage = [...messages].reverse().find((m: { role: string }) => m.role === 'assistant');
@@ -54,8 +55,8 @@ export async function GET(
       messages,
       currentQuestion,
       isComplete: !!task.planning_complete,
-      spec: task.planning_spec ? JSON.parse(task.planning_spec) : null,
-      agents: task.planning_agents ? JSON.parse(task.planning_agents) : null,
+      spec: task.planning_spec ?? null,
+      agents: task.planning_agents ?? null,
       isStarted: messages.length > 0,
     });
   } catch (error) {
@@ -72,16 +73,19 @@ export async function POST(
   const { id: taskId } = await params;
 
   try {
+    const supabase = getSupabase();
+
     // Get task
-    const task = getDb().prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) as {
-      id: string;
-      title: string;
-      description: string;
-      status: string;
-      workspace_id: string;
-      planning_session_key?: string;
-      planning_messages?: string;
-    } | undefined;
+    const { data: task, error: taskError } = await supabase
+      .from('tasks')
+      .select('id, title, description, status, workspace_id, planning_session_key, planning_messages')
+      .eq('id', taskId)
+      .maybeSingle();
+
+    if (taskError) {
+      console.error('Failed to get task:', taskError);
+      return NextResponse.json({ error: 'Failed to start planning: ' + taskError.message }, { status: 500 });
+    }
 
     if (!task) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 });
@@ -92,28 +96,26 @@ export async function POST(
       return NextResponse.json({ error: 'Planning already started', sessionKey: task.planning_session_key }, { status: 400 });
     }
 
-    // Check if there are other orchestrators available before starting planning with the default master agent
     // Get the default master agent for this workspace
-    const defaultMaster = queryOne<{ id: string }>(
-      `SELECT id FROM agents WHERE is_master = 1 AND workspace_id = ? ORDER BY created_at ASC LIMIT 1`,
-      [task.workspace_id]
-    );
+    const { data: defaultMaster } = await supabase
+      .from('agents')
+      .select('id')
+      .eq('is_master', true)
+      .eq('workspace_id', task.workspace_id)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
 
-    const otherOrchestrators = queryAll<{
-      id: string;
-      name: string;
-      role: string;
-    }>(
-      `SELECT id, name, role
-       FROM agents
-       WHERE is_master = 1
-       AND id != ?
-       AND workspace_id = ?
-       AND status != 'offline'`,
-      [defaultMaster?.id ?? '', task.workspace_id]
-    );
+    // Check if there are other orchestrators available before starting planning
+    const { data: otherOrchestrators } = await supabase
+      .from('agents')
+      .select('id, name, role')
+      .eq('is_master', true)
+      .eq('workspace_id', task.workspace_id)
+      .neq('id', defaultMaster?.id ?? '')
+      .neq('status', 'offline');
 
-    if (otherOrchestrators.length > 0) {
+    if (otherOrchestrators && otherOrchestrators.length > 0) {
       return NextResponse.json({
         error: 'Other orchestrators available',
         message: `There ${otherOrchestrators.length === 1 ? 'is' : 'are'} ${otherOrchestrators.length} other orchestrator${otherOrchestrators.length === 1 ? '' : 's'} available in this workspace: ${otherOrchestrators.map(o => o.name).join(', ')}. Please assign this task to them directly.`,
@@ -162,13 +164,22 @@ Respond with ONLY valid JSON in this format:
     });
 
     // Store the session key and initial message
+    // planning_messages is JSONB - pass as object directly, no JSON.stringify
     const messages = [{ role: 'user', content: planningPrompt, timestamp: Date.now() }];
 
-    getDb().prepare(`
-      UPDATE tasks
-      SET planning_session_key = ?, planning_messages = ?, status = 'planning'
-      WHERE id = ?
-    `).run(sessionKey, JSON.stringify(messages), taskId);
+    const { error: updateError } = await supabase
+      .from('tasks')
+      .update({
+        planning_session_key: sessionKey,
+        planning_messages: messages,
+        status: 'planning',
+      })
+      .eq('id', taskId);
+
+    if (updateError) {
+      console.error('Failed to update task with planning session:', updateError);
+      return NextResponse.json({ error: 'Failed to start planning: ' + updateError.message }, { status: 500 });
+    }
 
     // Return immediately - frontend will poll for updates
     // This eliminates the aggressive polling loop that was making 30+ OpenClaw API calls
@@ -192,35 +203,50 @@ export async function DELETE(
   const { id: taskId } = await params;
 
   try {
-    // Get task to check session key
-    const task = queryOne<{
-      id: string;
-      planning_session_key?: string;
-      status: string;
-    }>(
-      'SELECT * FROM tasks WHERE id = ?',
-      [taskId]
-    );
+    const supabase = getSupabase();
+
+    // Get task to check it exists
+    const { data: task, error: taskError } = await supabase
+      .from('tasks')
+      .select('id, planning_session_key, status')
+      .eq('id', taskId)
+      .maybeSingle();
+
+    if (taskError) {
+      console.error('Failed to get task:', taskError);
+      return NextResponse.json({ error: 'Failed to cancel planning: ' + taskError.message }, { status: 500 });
+    }
 
     if (!task) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 });
     }
 
     // Clear planning-related fields
-    run(`
-      UPDATE tasks
-      SET planning_session_key = NULL,
-          planning_messages = NULL,
-          planning_complete = 0,
-          planning_spec = NULL,
-          planning_agents = NULL,
-          status = 'inbox',
-          updated_at = datetime('now')
-      WHERE id = ?
-    `, [taskId]);
+    const { error: updateError } = await supabase
+      .from('tasks')
+      .update({
+        planning_session_key: null,
+        planning_messages: null,
+        planning_complete: false,
+        planning_spec: null,
+        planning_agents: null,
+        status: 'inbox',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', taskId);
+
+    if (updateError) {
+      console.error('Failed to cancel planning:', updateError);
+      return NextResponse.json({ error: 'Failed to cancel planning: ' + updateError.message }, { status: 500 });
+    }
 
     // Broadcast task update
-    const updatedTask = queryOne('SELECT * FROM tasks WHERE id = ?', [taskId]);
+    const { data: updatedTask } = await supabase
+      .from('tasks')
+      .select('*')
+      .eq('id', taskId)
+      .maybeSingle();
+
     if (updatedTask) {
       broadcast({
         type: 'task_updated',

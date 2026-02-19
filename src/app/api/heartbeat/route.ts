@@ -110,7 +110,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     // Batch-fetch active sessions for all agents that have dispatchable tasks (avoids N+1)
-    const agentIds = [...new Set(dispatchableTasks.map(t => t.assigned_agent_id).filter(Boolean))];
+    const agentIds = Array.from(new Set(dispatchableTasks.map(t => t.assigned_agent_id).filter(Boolean)));
     const sessionByAgent = new Map<string, { id: string; openclaw_session_id: string }>();
 
     if (agentIds.length > 0) {

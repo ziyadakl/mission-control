@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getOpenClawClient } from '@/lib/openclaw/client';
-import { getDb } from '@/lib/db';
+import { getSupabase } from '@/lib/db';
 import { broadcast } from '@/lib/events';
 
 interface RouteParams {
@@ -93,10 +93,19 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     const body = await request.json();
     const { status, ended_at } = body;
 
-    const db = getDb();
+    const supabase = getSupabase();
 
     // Find session by openclaw_session_id
-    const session = db.prepare('SELECT * FROM openclaw_sessions WHERE openclaw_session_id = ?').get(id) as any;
+    const { data: session, error: findError } = await supabase
+      .from('openclaw_sessions')
+      .select('*')
+      .eq('openclaw_session_id', id)
+      .maybeSingle();
+
+    if (findError) {
+      console.error('Failed to find session:', findError);
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
 
     if (!session) {
       return NextResponse.json(
@@ -105,36 +114,37 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       );
     }
 
-    // Update session
-    const updates: string[] = [];
-    const values: unknown[] = [];
+    // Build update payload — only include provided fields
+    const updates: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
 
-    if (status !== undefined) {
-      updates.push('status = ?');
-      values.push(status);
-    }
+    if (status !== undefined) updates.status = status;
+    if (ended_at !== undefined) updates.ended_at = ended_at;
 
-    if (ended_at !== undefined) {
-      updates.push('ended_at = ?');
-      values.push(ended_at);
-    }
-
-    if (updates.length === 0) {
+    if (Object.keys(updates).length === 1) {
       return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
     }
 
-    updates.push('updated_at = ?');
-    values.push(new Date().toISOString());
-    values.push(session.id);
+    const { data: updatedSession, error: updateError } = await supabase
+      .from('openclaw_sessions')
+      .update(updates)
+      .eq('id', session.id)
+      .select()
+      .single();
 
-    db.prepare(`UPDATE openclaw_sessions SET ${updates.join(', ')} WHERE id = ?`).run(...values);
-
-    const updatedSession = db.prepare('SELECT * FROM openclaw_sessions WHERE id = ?').get(session.id);
+    if (updateError) {
+      console.error('Failed to update session:', updateError);
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
 
     // If status changed to completed, update the agent status too
     if (status === 'completed') {
       if (session.agent_id) {
-        db.prepare('UPDATE agents SET status = ? WHERE id = ?').run('idle', session.agent_id);
+        await supabase
+          .from('agents')
+          .update({ status: 'idle' })
+          .eq('id', session.agent_id);
       }
       if (session.task_id) {
         broadcast({
@@ -161,13 +171,36 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 export async function DELETE(request: Request, { params }: RouteParams) {
   try {
     const { id } = await params;
-    const db = getDb();
+    const supabase = getSupabase();
 
-    // Find session by openclaw_session_id or internal id
-    let session = db.prepare('SELECT * FROM openclaw_sessions WHERE openclaw_session_id = ?').get(id) as any;
+    // Find session by openclaw_session_id first
+    const { data: bySessionId, error: findError } = await supabase
+      .from('openclaw_sessions')
+      .select('*')
+      .eq('openclaw_session_id', id)
+      .maybeSingle();
 
+    if (findError) {
+      console.error('Failed to find session by openclaw_session_id:', findError);
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
+
+    let session = bySessionId;
+
+    // If not found by openclaw_session_id, try internal id
     if (!session) {
-      session = db.prepare('SELECT * FROM openclaw_sessions WHERE id = ?').get(id) as any;
+      const { data: byId, error: byIdError } = await supabase
+        .from('openclaw_sessions')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (byIdError) {
+        console.error('Failed to find session by internal id:', byIdError);
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+      }
+
+      session = byId;
     }
 
     if (!session) {
@@ -181,16 +214,35 @@ export async function DELETE(request: Request, { params }: RouteParams) {
     const agentId = session.agent_id;
 
     // Delete the session
-    db.prepare('DELETE FROM openclaw_sessions WHERE id = ?').run(session.id);
+    const { error: deleteError } = await supabase
+      .from('openclaw_sessions')
+      .delete()
+      .eq('id', session.id);
 
-    // If there's an associated agent that was auto-created (role = 'Sub-Agent'), delete it too
+    if (deleteError) {
+      console.error('Failed to delete session:', deleteError);
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
+
+    // Handle associated agent cleanup
     if (agentId) {
-      const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(agentId) as any;
-      if (agent && agent.role === 'Sub-Agent') {
-        db.prepare('DELETE FROM agents WHERE id = ?').run(agentId);
-      } else if (agent) {
-        // Update non-subagent back to idle
-        db.prepare('UPDATE agents SET status = ? WHERE id = ?').run('idle', agentId);
+      const { data: agent, error: agentError } = await supabase
+        .from('agents')
+        .select('*')
+        .eq('id', agentId)
+        .maybeSingle();
+
+      if (!agentError && agent) {
+        if (agent.role === 'Sub-Agent') {
+          // Auto-created sub-agent — remove it entirely
+          await supabase.from('agents').delete().eq('id', agentId);
+        } else {
+          // Persistent agent — reset back to idle
+          await supabase
+            .from('agents')
+            .update({ status: 'idle' })
+            .eq('id', agentId);
+        }
       }
     }
 

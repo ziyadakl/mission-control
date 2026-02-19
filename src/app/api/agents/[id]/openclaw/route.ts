@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { queryOne, run } from '@/lib/db';
+import { getSupabase } from '@/lib/db';
 import { getOpenClawClient } from '@/lib/openclaw/client';
-import type { Agent, OpenClawSession } from '@/lib/types';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -11,17 +10,35 @@ interface RouteParams {
 // GET /api/agents/[id]/openclaw - Get the agent's OpenClaw session
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
+    const supabase = getSupabase();
     const { id } = await params;
 
-    const agent = queryOne<Agent>('SELECT * FROM agents WHERE id = ?', [id]);
+    const { data: agent, error: agentError } = await supabase
+      .from('agents')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (agentError) {
+      console.error('Failed to fetch agent:', agentError);
+      return NextResponse.json({ error: 'Failed to get OpenClaw session' }, { status: 500 });
+    }
+
     if (!agent) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
 
-    const session = queryOne<OpenClawSession>(
-      'SELECT * FROM openclaw_sessions WHERE agent_id = ? AND status = ?',
-      [id, 'active']
-    );
+    const { data: session, error: sessionError } = await supabase
+      .from('openclaw_sessions')
+      .select('*')
+      .eq('agent_id', id)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (sessionError) {
+      console.error('Failed to fetch OpenClaw session:', sessionError);
+      return NextResponse.json({ error: 'Failed to get OpenClaw session' }, { status: 500 });
+    }
 
     if (!session) {
       return NextResponse.json({ linked: false, session: null });
@@ -40,18 +57,37 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 // POST /api/agents/[id]/openclaw - Link agent to OpenClaw (creates session)
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
+    const supabase = getSupabase();
     const { id } = await params;
 
-    const agent = queryOne<Agent>('SELECT * FROM agents WHERE id = ?', [id]);
+    const { data: agent, error: agentError } = await supabase
+      .from('agents')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (agentError) {
+      console.error('Failed to fetch agent:', agentError);
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
+
     if (!agent) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
 
     // Check if already linked
-    const existingSession = queryOne<OpenClawSession>(
-      'SELECT * FROM openclaw_sessions WHERE agent_id = ? AND status = ?',
-      [id, 'active']
-    );
+    const { data: existingSession, error: sessionFetchError } = await supabase
+      .from('openclaw_sessions')
+      .select('*')
+      .eq('agent_id', id)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (sessionFetchError) {
+      console.error('Failed to fetch existing session:', sessionFetchError);
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
+
     if (existingSession) {
       return NextResponse.json(
         { error: 'Agent is already linked to an OpenClaw session', session: existingSession },
@@ -87,26 +123,51 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Store the link in our database - session ID will be set when first message is sent
     // For now, use agent name as the session identifier
     const sessionId = uuidv4();
-    const openclawSessionId = `mission-control-${agent.name.toLowerCase().replace(/\s+/g, '-')}`;
+    const openclawSessionId = `mission-control-${id}-${agent.name.toLowerCase().replace(/\s+/g, '-')}`;
     const now = new Date().toISOString();
 
-    run(
-      `INSERT INTO openclaw_sessions (id, agent_id, openclaw_session_id, channel, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [sessionId, id, openclawSessionId, 'mission-control', 'active', now, now]
-    );
+    const { error: insertSessionError } = await supabase
+      .from('openclaw_sessions')
+      .insert({
+        id: sessionId,
+        agent_id: id,
+        openclaw_session_id: openclawSessionId,
+        channel: 'mission-control',
+        status: 'active',
+        created_at: now,
+        updated_at: now,
+      });
+
+    if (insertSessionError) {
+      console.error('Failed to insert OpenClaw session:', insertSessionError);
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
 
     // Log event
-    run(
-      `INSERT INTO events (id, type, agent_id, message, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      [uuidv4(), 'agent_status_changed', id, `${agent.name} connected to OpenClaw Gateway`, now]
-    );
+    const { error: eventError } = await supabase
+      .from('events')
+      .insert({
+        id: uuidv4(),
+        type: 'agent_status_changed',
+        agent_id: id,
+        message: `${agent.name} connected to OpenClaw Gateway`,
+        created_at: now,
+      });
 
-    const session = queryOne<OpenClawSession>(
-      'SELECT * FROM openclaw_sessions WHERE id = ?',
-      [sessionId]
-    );
+    if (eventError) {
+      console.error('Failed to log OpenClaw connect event:', eventError);
+    }
+
+    const { data: session, error: fetchSessionError } = await supabase
+      .from('openclaw_sessions')
+      .select('*')
+      .eq('id', sessionId)
+      .single();
+
+    if (fetchSessionError) {
+      console.error('Failed to fetch newly created session:', fetchSessionError);
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
 
     return NextResponse.json({ linked: true, session }, { status: 201 });
   } catch (error) {
@@ -121,17 +182,35 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 // DELETE /api/agents/[id]/openclaw - Unlink agent from OpenClaw
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
+    const supabase = getSupabase();
     const { id } = await params;
 
-    const agent = queryOne<Agent>('SELECT * FROM agents WHERE id = ?', [id]);
+    const { data: agent, error: agentError } = await supabase
+      .from('agents')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (agentError) {
+      console.error('Failed to fetch agent:', agentError);
+      return NextResponse.json({ error: 'Failed to unlink agent from OpenClaw' }, { status: 500 });
+    }
+
     if (!agent) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
 
-    const existingSession = queryOne<OpenClawSession>(
-      'SELECT * FROM openclaw_sessions WHERE agent_id = ? AND status = ?',
-      [id, 'active']
-    );
+    const { data: existingSession, error: sessionFetchError } = await supabase
+      .from('openclaw_sessions')
+      .select('*')
+      .eq('agent_id', id)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (sessionFetchError) {
+      console.error('Failed to fetch existing session:', sessionFetchError);
+      return NextResponse.json({ error: 'Failed to unlink agent from OpenClaw' }, { status: 500 });
+    }
 
     if (!existingSession) {
       return NextResponse.json(
@@ -142,17 +221,30 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     // Mark the session as inactive
     const now = new Date().toISOString();
-    run(
-      'UPDATE openclaw_sessions SET status = ?, updated_at = ? WHERE id = ?',
-      ['inactive', now, existingSession.id]
-    );
+    const { error: updateError } = await supabase
+      .from('openclaw_sessions')
+      .update({ status: 'inactive', updated_at: now })
+      .eq('id', existingSession.id);
+
+    if (updateError) {
+      console.error('Failed to deactivate OpenClaw session:', updateError);
+      return NextResponse.json({ error: 'Failed to unlink agent from OpenClaw' }, { status: 500 });
+    }
 
     // Log event
-    run(
-      `INSERT INTO events (id, type, agent_id, message, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      [uuidv4(), 'agent_status_changed', id, `${agent.name} disconnected from OpenClaw Gateway`, now]
-    );
+    const { error: eventError } = await supabase
+      .from('events')
+      .insert({
+        id: uuidv4(),
+        type: 'agent_status_changed',
+        agent_id: id,
+        message: `${agent.name} disconnected from OpenClaw Gateway`,
+        created_at: now,
+      });
+
+    if (eventError) {
+      console.error('Failed to log OpenClaw disconnect event:', eventError);
+    }
 
     return NextResponse.json({ linked: false, success: true });
   } catch (error) {

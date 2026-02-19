@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { queryOne, run, getDb, queryAll } from '@/lib/db';
+import { getSupabase } from '@/lib/db';
 import { getOpenClawClient } from '@/lib/openclaw/client';
 import { broadcast } from '@/lib/events';
 import { extractJSON, getMessagesFromOpenClaw } from '@/lib/planning-utils';
@@ -18,81 +18,94 @@ if (isNaN(PLANNING_POLL_INTERVAL_MS) || PLANNING_POLL_INTERVAL_MS < 100) {
   throw new Error('PLANNING_POLL_INTERVAL_MS must be a valid number >= 100ms');
 }
 
-// Helper to handle planning completion with proper error handling and rollback
+// Helper to handle planning completion with proper error handling
 async function handlePlanningCompletion(taskId: string, parsed: any, messages: any[]) {
-  const db = getDb();
+  const supabase = getSupabase();
   let dispatchError: string | null = null;
   let firstAgentId: string | null = null;
 
-  // Wrap all database operations in a transaction for atomicity
-  // Set status to 'pending_dispatch' first - don't mark as complete until dispatch succeeds
-  const transaction = db.transaction(() => {
-    // Update task with completion data but keep planning_complete = 0 until dispatch succeeds
-    db.prepare(`
-      UPDATE tasks
-      SET planning_messages = ?,
-          planning_spec = ?,
-          planning_agents = ?,
-          status = 'pending_dispatch',
-          planning_dispatch_error = NULL
-      WHERE id = ?
-    `).run(
-      JSON.stringify(messages),
-      JSON.stringify(parsed.spec),
-      JSON.stringify(parsed.agents),
-      taskId
-    );
+  // Set status to 'pending_dispatch' first and save planning data
+  // Don't mark as complete until dispatch succeeds
+  const { error: initialUpdateError } = await supabase
+    .from('tasks')
+    .update({
+      planning_messages: messages,
+      planning_spec: parsed.spec,
+      planning_agents: parsed.agents,
+      status: 'pending_dispatch',
+      planning_dispatch_error: null,
+    })
+    .eq('id', taskId);
 
-    // Create the agents in the workspace and track first agent for auto-assign
-    if (parsed.agents && parsed.agents.length > 0) {
-      const insertAgent = db.prepare(`
-        INSERT INTO agents (id, workspace_id, name, role, description, avatar_emoji, status, soul_md, created_at, updated_at)
-        VALUES (?, (SELECT workspace_id FROM tasks WHERE id = ?), ?, ?, ?, ?, 'standby', ?, datetime('now'), datetime('now'))
-      `);
+  if (initialUpdateError) {
+    console.error('[Planning Poll] Failed to update task to pending_dispatch:', initialUpdateError);
+  }
 
+  // Create the agents in the workspace and track first agent for auto-assign
+  if (parsed.agents && parsed.agents.length > 0) {
+    // Get workspace_id for the task
+    const { data: taskRow } = await supabase
+      .from('tasks')
+      .select('workspace_id')
+      .eq('id', taskId)
+      .maybeSingle();
+
+    if (taskRow?.workspace_id) {
       for (const agent of parsed.agents) {
         const agentId = crypto.randomUUID();
         if (!firstAgentId) firstAgentId = agentId;
 
-        insertAgent.run(
-          agentId,
-          taskId,
-          agent.name,
-          agent.role,
-          agent.instructions || '',
-          agent.avatar_emoji || '🤖',
-          agent.soul_md || ''
-        );
+        const { error: agentError } = await supabase
+          .from('agents')
+          .insert({
+            id: agentId,
+            workspace_id: taskRow.workspace_id,
+            name: agent.name,
+            role: agent.role,
+            description: agent.instructions || '',
+            avatar_emoji: agent.avatar_emoji || '🤖',
+            status: 'standby',
+            soul_md: agent.soul_md || '',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+
+        if (agentError) {
+          console.error('[Planning Poll] Failed to create agent:', agent.name, agentError);
+        }
       }
     }
-
-    return firstAgentId;
-  });
-
-  // Execute the transaction to create agents and set pending_dispatch status
-  firstAgentId = transaction();
+  }
 
   // Re-check for other orchestrators before dispatching (prevents race condition)
   if (firstAgentId) {
-    const task = queryOne<{ workspace_id: string }>('SELECT workspace_id FROM tasks WHERE id = ?', [taskId]);
-    if (task) {
-      const defaultMaster = queryOne<{ id: string }>(
-        `SELECT id FROM agents WHERE is_master = 1 AND workspace_id = ? ORDER BY created_at ASC LIMIT 1`,
-        [task.workspace_id]
-      );
-      const otherOrchestrators = queryAll<{ id: string; name: string }>(
-        `SELECT id, name
-         FROM agents
-         WHERE is_master = 1
-         AND id != ?
-         AND workspace_id = ?
-         AND status != 'offline'`,
-        [defaultMaster?.id ?? '', task.workspace_id]
-      );
+    const { data: taskRow } = await supabase
+      .from('tasks')
+      .select('workspace_id')
+      .eq('id', taskId)
+      .maybeSingle();
 
-      if (otherOrchestrators.length > 0) {
+    if (taskRow?.workspace_id) {
+      const { data: defaultMaster } = await supabase
+        .from('agents')
+        .select('id')
+        .eq('is_master', true)
+        .eq('workspace_id', taskRow.workspace_id)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      const { data: otherOrchestrators } = await supabase
+        .from('agents')
+        .select('id, name')
+        .eq('is_master', true)
+        .eq('workspace_id', taskRow.workspace_id)
+        .neq('id', defaultMaster?.id ?? '')
+        .neq('status', 'offline');
+
+      if (otherOrchestrators && otherOrchestrators.length > 0) {
         dispatchError = `Cannot auto-dispatch: ${otherOrchestrators.length} other orchestrator(s) available in workspace`;
-        console.warn(`[Planning Poll] ${dispatchError}:`, otherOrchestrators.map(o => o.name).join(', '));
+        console.warn(`[Planning Poll] ${dispatchError}:`, otherOrchestrators.map((o: any) => o.name).join(', '));
         firstAgentId = null; // Don't dispatch
       }
     }
@@ -101,10 +114,12 @@ async function handlePlanningCompletion(taskId: string, parsed: any, messages: a
   // Check if task is already assigned (idempotency - prevents duplicate dispatches from multiple polls)
   let skipDispatch = false;
   if (firstAgentId) {
-    const currentTask = queryOne<{ assigned_agent_id?: string }>(
-      'SELECT assigned_agent_id FROM tasks WHERE id = ?',
-      [taskId]
-    );
+    const { data: currentTask } = await supabase
+      .from('tasks')
+      .select('assigned_agent_id')
+      .eq('id', taskId)
+      .maybeSingle();
+
     if (currentTask?.assigned_agent_id) {
       console.log('[Planning Poll] Task already assigned to', currentTask.assigned_agent_id, ', skipping dispatch');
       firstAgentId = currentTask.assigned_agent_id;
@@ -144,47 +159,53 @@ async function handlePlanningCompletion(taskId: string, parsed: any, messages: a
     }
   }
 
-  // Final transaction: mark as complete or store error for retry
-  db.transaction(() => {
-    if (dispatchError) {
-      // Store the error but don't mark as complete - user can retry
-      db.prepare(`
-        UPDATE tasks
-        SET planning_dispatch_error = ?,
-            updated_at = datetime('now')
-        WHERE id = ?
-      `).run(dispatchError, taskId);
-    } else if (firstAgentId) {
-      // Success - mark complete and assign
-      db.prepare(`
-        UPDATE tasks
-        SET planning_complete = 1,
-            assigned_agent_id = ?,
-            status = 'inbox',
-            planning_dispatch_error = NULL,
-            updated_at = datetime('now')
-        WHERE id = ?
-      `).run(firstAgentId, taskId);
-      console.log(`[Planning Poll] Planning complete and dispatched to agent ${firstAgentId}`);
-    } else {
-      // No agent to dispatch to, but planning is complete
-      db.prepare(`
-        UPDATE tasks
-        SET planning_complete = 1,
-            status = 'inbox',
-            planning_dispatch_error = NULL,
-            updated_at = datetime('now')
-        WHERE id = ?
-      `).run(taskId);
-    }
-  })();
+  // Final update: mark as complete or store error for retry
+  if (dispatchError) {
+    // Store the error but don't mark as complete - user can retry
+    await supabase
+      .from('tasks')
+      .update({
+        planning_dispatch_error: dispatchError,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', taskId);
+  } else if (firstAgentId) {
+    // Success - mark complete and assign
+    await supabase
+      .from('tasks')
+      .update({
+        planning_complete: true,
+        assigned_agent_id: firstAgentId,
+        status: 'inbox',
+        planning_dispatch_error: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', taskId);
+    console.log(`[Planning Poll] Planning complete and dispatched to agent ${firstAgentId}`);
+  } else {
+    // No agent to dispatch to, but planning is complete
+    await supabase
+      .from('tasks')
+      .update({
+        planning_complete: true,
+        status: 'inbox',
+        planning_dispatch_error: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', taskId);
+  }
 
   // Broadcast task update
-  const updatedTask = queryOne<Task>('SELECT * FROM tasks WHERE id = ?', [taskId]);
+  const { data: updatedTask } = await supabase
+    .from('tasks')
+    .select('*')
+    .eq('id', taskId)
+    .maybeSingle();
+
   if (updatedTask) {
     broadcast({
       type: 'task_updated',
-      payload: updatedTask,
+      payload: updatedTask as Task,
     });
   }
 
@@ -199,23 +220,32 @@ export async function GET(
   const { id: taskId } = await params;
 
   try {
-    const task = queryOne<{
-      id: string;
-      planning_session_key?: string;
-      planning_messages?: string;
-      planning_complete?: number;
-      planning_dispatch_error?: string;
-    }>('SELECT * FROM tasks WHERE id = ?', [taskId]);
+    const supabase = getSupabase();
 
-    if (!task || !task.planning_session_key) {
-      return NextResponse.json({ error: 'Planning session not found' }, { status: 404 });
+    const { data: task, error: taskError } = await supabase
+      .from('tasks')
+      .select('id, planning_session_key, planning_messages, planning_complete, planning_dispatch_error')
+      .eq('id', taskId)
+      .maybeSingle();
+
+    if (taskError) {
+      console.error('Failed to get task:', taskError);
+      return NextResponse.json({ error: 'Failed to poll for updates' }, { status: 500 });
+    }
+
+    if (!task) {
+      return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+    }
+
+    if (!task.planning_session_key) {
+      return NextResponse.json({ hasUpdates: false, isComplete: false, messages: [] });
     }
 
     if (task.planning_complete) {
       return NextResponse.json({ hasUpdates: false, isComplete: true });
     }
 
-    // Return dispatch error if present (allows user to see/ retry failed dispatch)
+    // Return dispatch error if present (allows user to see / retry failed dispatch)
     if (task.planning_dispatch_error) {
       return NextResponse.json({
         hasUpdates: true,
@@ -223,7 +253,8 @@ export async function GET(
       });
     }
 
-    const messages = task.planning_messages ? JSON.parse(task.planning_messages) : [];
+    // planning_messages is JSONB - already parsed by Supabase
+    const messages: any[] = Array.isArray(task.planning_messages) ? task.planning_messages : [];
     // Count only assistant messages for comparison, since OpenClaw only returns assistant messages
     const initialAssistantCount = messages.filter((m: any) => m.role === 'assistant').length;
 
@@ -299,8 +330,11 @@ export async function GET(
 
       console.log('[Planning Poll] Returning updates: currentQuestion =', currentQuestion ? 'YES' : 'NO');
 
-      // Update database
-      run('UPDATE tasks SET planning_messages = ? WHERE id = ?', [JSON.stringify(messages), taskId]);
+      // Update database - pass array directly (JSONB)
+      await supabase
+        .from('tasks')
+        .update({ planning_messages: messages })
+        .eq('id', taskId);
 
       return NextResponse.json({
         hasUpdates: true,

@@ -7,7 +7,7 @@ AI Agent Orchestration Dashboard — create tasks, plan via interactive Q&A, aut
 - Next.js 14.2 (App Router, API routes)
 - React 18.2, TypeScript 5.7
 - Tailwind CSS 3.4, PostCSS
-- SQLite 3 (better-sqlite3)
+- Supabase (Postgres via PostgREST)
 - Zustand 5.0 (state management)
 - Zod 4.3 (validation)
 - PM2 (production deployment)
@@ -18,12 +18,9 @@ AI Agent Orchestration Dashboard — create tasks, plan via interactive Q&A, aut
 ```bash
 npm run dev          # Dev server (port 4000)
 npm run build        # Production build
-npm start            # Production server
+npm start            # Production server (port 4000)
 npm run lint         # ESLint
-npm run db:seed      # Seed database
-npm run db:backup    # Backup SQLite DB
-npm run db:restore   # Restore from backup
-npm run db:reset     # Drop + reseed
+npm run db:seed      # Seed Supabase with OpenClaw agents
 ```
 
 ## Architecture
@@ -37,7 +34,7 @@ src/
 ├── components/             # React UI (WorkspaceDashboard, MissionQueue, TaskModal, etc.)
 ├── hooks/                  # Custom hooks (useSSE for real-time)
 ├── lib/
-│   ├── db/                 # SQLite schema, migrations, seed
+│   ├── db/                 # Supabase client (getSupabase singleton)
 │   ├── openclaw/           # WebSocket client, device auth (RSA), deploy
 │   ├── store.ts            # Zustand state
 │   ├── events.ts           # SSE broadcaster
@@ -46,7 +43,7 @@ src/
 └── middleware.ts            # Auth middleware (Bearer token)
 ```
 
-**Data flow**: Browser <-> Next.js API <-> SQLite + OpenClaw Gateway (WebSocket)
+**Data flow**: Browser <-> Next.js API <-> Supabase (Postgres) + OpenClaw Gateway (WebSocket)
 **Real-time**: SSE from server to browser, WebSocket from server to OpenClaw Gateway
 
 ## Code Style
@@ -60,33 +57,25 @@ src/
 
 ## Constraints
 
-- **SQLite only** — No ORM. Raw SQL via better-sqlite3. Considered Prisma but SQLite is file-based and portable for single-machine deployment.
+- **Supabase Postgres only** — No ORM. Supabase PostgREST client via `getSupabase()` singleton. Schema managed through Supabase dashboard/migrations. Env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 - **No shadcn/ui** — Custom components with Tailwind. The UI is specialized (Kanban board, planning tab, SSE debug panel) and doesn't benefit from a component library.
 - **SSE not WebSocket for browser** — Server-Sent Events for server-to-browser push. WebSocket reserved for OpenClaw Gateway connection only. SSE is simpler, works with HTTP/2, and auto-reconnects.
 - **Bearer token auth, not session-based** — `MC_API_TOKEN` env var. Same-origin browser requests exempted. No user accounts needed for single-operator dashboard.
-- **Never commit .env files, .db files, or .pem keys**
+- **Never commit .env files or .pem keys**
 
 ## Deployment
 
-OpenClaw and Mission Control are **live in production** since February 2026.
-
-| Detail | Value |
-|--------|-------|
-| Production URL | `https://srv1360790.tail30bf7c.ts.net` |
-| SSH access | `ssh openclaw` (configured in `~/.ssh/config`) |
-| Mission Control (deployed) | `/home/deploy/mission-control/` on VPS |
-| OpenClaw config (deployed) | `/home/deploy/.openclaw/` on VPS |
-| Mission Control (local dev) | This repo |
-
-- Managed with PM2 on VPS, accessible via Tailscale network
-- To deploy: push to main, SSH in, pull + restart PM2
-- Reference docs (setup plans, hosting comparison, token optimization) live in `docs/plans/` and `docs/` -- these are historical reference, not active instructions
+Live in production since Feb 2026. See `docs/PRODUCTION_SETUP.md` for full details (PM2, Tailscale, SSH access, deploy workflow).
 
 ## Docs
 
 - `docs/AGENT_PROTOCOL.md` — Agent communication protocol
 - `docs/ORCHESTRATION_WORKFLOW.md` — Task lifecycle and dispatch flow
+- `docs/ORCHESTRATION.md` — Orchestration guide (sub-agents, activity logging)
+- `docs/HEARTBEAT.md` — Orchestrator instructions (inbox polling, task assignment)
 - `docs/REALTIME_SPEC.md` — SSE event types and streaming architecture
+- `docs/TESTING_REALTIME.md` — Real-time integration testing guide
+- `docs/VERIFICATION_CHECKLIST.md` — Pre-deployment verification checklist
 - `docs/PRODUCTION_SETUP.md` — Deployment guide (PM2, Tailscale, reverse proxy)
 - `docs/claude-workflow.md` — Claude Code best practices for this project
 

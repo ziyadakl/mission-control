@@ -151,7 +151,7 @@ function WorkspaceCard({ workspace, onDelete }: { workspace: WorkspaceStats; onD
       <div className="bg-mc-bg-secondary border border-mc-border rounded-xl p-6 hover:border-mc-accent/50 transition-all hover:shadow-lg cursor-pointer group relative">
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
-            <span className="text-3xl">{workspace.icon}</span>
+            <span className="text-3xl">{"📁"}</span>
             <div>
               <h3 className="font-semibold text-lg group-hover:text-mc-accent transition-colors">
                 {workspace.name}

@@ -4,11 +4,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { getSupabase } from '@/lib/db';
 import { broadcast } from '@/lib/events';
 import { CreateDeliverableSchema } from '@/lib/validation';
 import { existsSync } from 'fs';
-import path from 'path';
 import type { TaskDeliverable } from '@/lib/types';
 
 /**
@@ -17,20 +16,27 @@ import type { TaskDeliverable } from '@/lib/types';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const taskId = params.id;
-    const db = getDb();
+    const { id: taskId } = await params;
+    const supabase = getSupabase();
 
-    const deliverables = db.prepare(`
-      SELECT *
-      FROM task_deliverables
-      WHERE task_id = ?
-      ORDER BY created_at DESC
-    `).all(taskId) as TaskDeliverable[];
+    const { data: deliverables, error } = await supabase
+      .from('task_deliverables')
+      .select('*')
+      .eq('task_id', taskId)
+      .order('created_at', { ascending: false });
 
-    return NextResponse.json(deliverables);
+    if (error) {
+      console.error('Error fetching deliverables:', error);
+      return NextResponse.json(
+        { error: 'Failed to fetch deliverables' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(deliverables ?? []);
   } catch (error) {
     console.error('Error fetching deliverables:', error);
     return NextResponse.json(
@@ -46,12 +52,12 @@ export async function GET(
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const taskId = params.id;
+    const { id: taskId } = await params;
     const body = await request.json();
-    
+
     // Validate input with Zod
     const validation = CreateDeliverableSchema.safeParse(body);
     if (!validation.success) {
@@ -75,33 +81,48 @@ export async function POST(
       }
     }
 
-    const db = getDb();
+    const supabase = getSupabase();
     const id = crypto.randomUUID();
 
-    // Insert deliverable
-    db.prepare(`
-      INSERT INTO task_deliverables (id, task_id, deliverable_type, title, path, description)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
-      id,
-      taskId,
-      deliverable_type,
-      title,
-      path || null,
-      description || null
-    );
+    // Insert deliverable (description stored in metadata since column doesn't exist)
+    const { error: insertError } = await supabase
+      .from('task_deliverables')
+      .insert({
+        id,
+        task_id: taskId,
+        deliverable_type,
+        title,
+        path: path || null,
+        metadata: description ? { description } : null,
+      });
+
+    if (insertError) {
+      console.error('Error creating deliverable:', insertError);
+      return NextResponse.json(
+        { error: 'Failed to create deliverable' },
+        { status: 500 }
+      );
+    }
 
     // Get the created deliverable
-    const deliverable = db.prepare(`
-      SELECT *
-      FROM task_deliverables
-      WHERE id = ?
-    `).get(id) as TaskDeliverable;
+    const { data: deliverable, error: fetchError } = await supabase
+      .from('task_deliverables')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !deliverable) {
+      console.error('Error fetching created deliverable:', fetchError);
+      return NextResponse.json(
+        { error: 'Failed to fetch created deliverable' },
+        { status: 500 }
+      );
+    }
 
     // Broadcast to SSE clients
     broadcast({
       type: 'deliverable_added',
-      payload: deliverable,
+      payload: deliverable as TaskDeliverable,
     });
 
     // Return with warning if file doesn't exist

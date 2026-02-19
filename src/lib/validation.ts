@@ -51,7 +51,7 @@ export const CreateActivitySchema = z.object({
   activity_type: ActivityType,
   message: z.string().min(1, 'Message is required').max(5000, 'Message must be 5000 characters or less'),
   agent_id: z.string().uuid().optional(),
-  metadata: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 // Deliverable validation schema
@@ -69,7 +69,7 @@ export const CreateEventSchema = z.object({
   agent_id: z.string().uuid().optional(),
   task_id: z.string().uuid().optional(),
   metadata: z
-    .record(z.unknown())
+    .record(z.string(), z.unknown())
     .optional()
     .refine(
       (val) => {

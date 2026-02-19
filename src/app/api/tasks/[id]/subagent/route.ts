@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { getSupabase } from '@/lib/db';
 import { broadcast } from '@/lib/events';
 
 /**
@@ -13,12 +13,12 @@ import { broadcast } from '@/lib/events';
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const taskId = params.id;
+    const { id: taskId } = await params;
     const body = await request.json();
-    
+
     const { openclaw_session_id, agent_name } = body;
 
     if (!openclaw_session_id) {
@@ -28,53 +28,80 @@ export async function POST(
       );
     }
 
-    const db = getDb();
+    const supabase = getSupabase();
     const sessionId = crypto.randomUUID();
 
     // Create a placeholder agent if agent_name is provided
     // Otherwise, we'll need to link to an existing agent
-    let agentId = null;
-    
+    let agentId: string | null = null;
+
     if (agent_name) {
       // Check if agent already exists
-      const existingAgent = db.prepare('SELECT id FROM agents WHERE name = ?').get(agent_name) as any;
-      
+      const { data: existingAgent } = await supabase
+        .from('agents')
+        .select('id')
+        .eq('name', agent_name)
+        .maybeSingle();
+
       if (existingAgent) {
         agentId = existingAgent.id;
       } else {
         // Create temporary sub-agent record
         agentId = crypto.randomUUID();
-        db.prepare(`
-          INSERT INTO agents (id, name, role, description, status)
-          VALUES (?, ?, ?, ?, ?)
-        `).run(
-          agentId,
-          agent_name,
-          'Sub-Agent',
-          'Automatically created sub-agent',
-          'working'
-        );
+        const { error: agentError } = await supabase
+          .from('agents')
+          .insert({
+            id: agentId,
+            name: agent_name,
+            role: 'Sub-Agent',
+            description: 'Automatically created sub-agent',
+            status: 'working',
+          });
+
+        if (agentError) {
+          console.error('Error creating sub-agent:', agentError);
+          return NextResponse.json(
+            { error: 'Failed to create sub-agent' },
+            { status: 500 }
+          );
+        }
       }
     }
 
     // Insert OpenClaw session record
-    db.prepare(`
-      INSERT INTO openclaw_sessions 
-        (id, agent_id, openclaw_session_id, session_type, task_id, status)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
-      sessionId,
-      agentId,
-      openclaw_session_id,
-      'subagent',
-      taskId,
-      'active'
-    );
+    const { error: sessionError } = await supabase
+      .from('openclaw_sessions')
+      .insert({
+        id: sessionId,
+        agent_id: agentId,
+        openclaw_session_id,
+        session_type: 'subagent',
+        task_id: taskId,
+        status: 'active',
+      });
+
+    if (sessionError) {
+      console.error('Error creating session:', sessionError);
+      return NextResponse.json(
+        { error: 'Failed to register sub-agent session' },
+        { status: 500 }
+      );
+    }
 
     // Get the created session
-    const session = db.prepare(`
-      SELECT * FROM openclaw_sessions WHERE id = ?
-    `).get(sessionId);
+    const { data: session, error: fetchError } = await supabase
+      .from('openclaw_sessions')
+      .select('*')
+      .eq('id', sessionId)
+      .single();
+
+    if (fetchError || !session) {
+      console.error('Error fetching created session:', fetchError);
+      return NextResponse.json(
+        { error: 'Failed to fetch created session' },
+        { status: 500 }
+      );
+    }
 
     // Broadcast agent spawned event
     broadcast({
@@ -102,24 +129,28 @@ export async function POST(
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const taskId = params.id;
-    const db = getDb();
+    const { id: taskId } = await params;
+    const supabase = getSupabase();
 
-    const sessions = db.prepare(`
-      SELECT 
-        s.*,
-        a.name as agent_name,
-        a.avatar_emoji as agent_avatar_emoji
-      FROM openclaw_sessions s
-      LEFT JOIN agents a ON s.agent_id = a.id
-      WHERE s.task_id = ? AND s.session_type = 'subagent'
-      ORDER BY s.created_at DESC
-    `).all(taskId);
+    const { data: sessions, error } = await supabase
+      .from('openclaw_sessions')
+      .select('*, agents(name, avatar_emoji)')
+      .eq('task_id', taskId)
+      .eq('session_type', 'subagent')
+      .order('created_at', { ascending: false });
 
-    return NextResponse.json(sessions);
+    if (error) {
+      console.error('Error fetching sub-agents:', error);
+      return NextResponse.json(
+        { error: 'Failed to fetch sub-agents' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(sessions ?? []);
   } catch (error) {
     console.error('Error fetching sub-agents:', error);
     return NextResponse.json(

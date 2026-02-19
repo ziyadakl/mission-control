@@ -37,11 +37,17 @@ export async function POST(request: NextRequest) {
     const supabase = getSupabase();
     const body = await request.json();
 
-    const { name, slug, description, category } = body;
+    const { name, description, category } = body;
+    let { slug } = body;
 
     // Validate required fields
-    if (!name || !slug) {
-      return NextResponse.json({ error: 'Name and slug are required' }, { status: 400 });
+    if (!name) {
+      return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+    }
+
+    // Auto-generate slug from name if not provided
+    if (!slug) {
+      slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     }
 
     // Validate slug is URL-safe (lowercase alphanumeric + hyphens)
