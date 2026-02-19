@@ -10,6 +10,7 @@ import { MobileStatusFilter } from './MobileStatusFilter';
 import { DeliverablesOverview } from './DeliverablesOverview';
 import { formatDistanceToNow } from 'date-fns';
 import { getPipelineStageInfo } from '@/lib/pipeline-utils';
+import { getTaskStatusIndicator } from '@/lib/task-status-indicator';
 
 interface MissionQueueProps {
   workspaceId?: string;
@@ -229,7 +230,7 @@ interface TaskCardProps {
 }
 
 function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
-  const { templates } = useMissionControl();
+  const { templates, agentOpenClawSessions } = useMissionControl();
 
   const priorityStyles = {
     low: 'text-mc-text-secondary',
@@ -247,6 +248,7 @@ function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
 
   const isPlanning = task.status === 'planning';
   const pipelineInfo = getPipelineStageInfo(task, templates);
+  const statusIndicator = getTaskStatusIndicator(task, agentOpenClawSessions, pipelineInfo);
 
   return (
     <div
@@ -301,19 +303,20 @@ function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
           </div>
         )}
 
-        {/* Planning mode indicator */}
-        {isPlanning && (
-          <div className="flex items-center gap-2 mb-3 py-2 px-3 bg-purple-500/10 rounded-md border border-purple-500/20">
-            <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse flex-shrink-0" />
-            <span className="text-xs text-purple-400 font-medium">Continue planning</span>
-          </div>
-        )}
-
-        {/* Agent working indicator */}
-        {task.status === 'in_progress' && task.assigned_agent_id && (
-          <div className="flex items-center gap-2 mb-3 py-2 px-3 bg-emerald-500/10 rounded-md border border-emerald-500/20">
-            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse flex-shrink-0" />
-            <span className="text-xs text-emerald-400 font-medium">Agent working...</span>
+        {/* Task status indicator */}
+        {statusIndicator && (
+          <div className={`flex items-start gap-2 mb-3 py-2 px-3 ${statusIndicator.bgClass} rounded-md border ${statusIndicator.borderClass}`}>
+            <div className={`w-2 h-2 mt-0.5 ${statusIndicator.dotClass} rounded-full flex-shrink-0 ${statusIndicator.pulse ? 'animate-pulse' : ''}`} />
+            <div className="flex flex-col gap-0.5">
+              <span className={`text-xs ${statusIndicator.textClass} font-medium`}>
+                {statusIndicator.label}
+              </span>
+              {statusIndicator.sublabel && (
+                <span className="text-[10px] text-mc-text-secondary/60">
+                  {statusIndicator.sublabel}
+                </span>
+              )}
+            </div>
           </div>
         )}
 
@@ -323,16 +326,6 @@ function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
             <div className="w-2 h-2 mt-1 bg-amber-500 rounded-full flex-shrink-0" />
             <span className="text-xs text-amber-400 font-medium line-clamp-2">
               {task.alert_reason}
-            </span>
-          </div>
-        )}
-
-        {/* Assigned agent */}
-        {task.assigned_agent && (
-          <div className="flex items-center gap-2 mb-3 py-1.5 px-2 bg-mc-bg-tertiary/50 rounded">
-            <span className="w-6 h-6 rounded-full bg-mc-bg-tertiary border border-mc-border/50 flex items-center justify-center text-[10px] font-bold text-mc-accent uppercase">{(task.assigned_agent as unknown as { name: string }).name.slice(0, 2)}</span>
-            <span className="text-xs text-mc-text-secondary truncate">
-              {(task.assigned_agent as unknown as { name: string }).name}
             </span>
           </div>
         )}
