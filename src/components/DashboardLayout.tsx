@@ -11,7 +11,7 @@ import { StatsTray } from './StatsTray';
 import { useMissionControl } from '@/lib/store';
 import { useSSE } from '@/hooks/useSSE';
 import type { Task, Workspace } from '@/lib/types';
-import { BarChart2, Users, Activity } from 'lucide-react';
+import { BarChart2, Users, Activity, Menu, Zap } from 'lucide-react';
 import { DashboardOverview } from './dashboard/DashboardOverview';
 
 function WorkspaceContent({ slug }: { slug: string }) {
@@ -206,21 +206,50 @@ function DashboardContent() {
 
 export function DashboardLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
   return (
     <div className="h-screen flex bg-mc-bg overflow-hidden">
-      <Suspense fallback={null}>
-        <AppSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} />
-      </Suspense>
-      <main className="flex-1 overflow-hidden">
-        <Suspense fallback={
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-4xl animate-pulse">🦞</div>
-          </div>
-        }>
-          <DashboardContent />
+      {/* Desktop sidebar */}
+      <div className="hidden md:flex">
+        <Suspense fallback={null}>
+          <AppSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} />
         </Suspense>
-      </main>
+      </div>
+
+      {/* Mobile drawer overlay */}
+      {mobileDrawerOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setMobileDrawerOpen(false)} />
+          <div className="relative w-60 h-full">
+            <Suspense fallback={null}>
+              <AppSidebar collapsed={false} onToggle={() => setMobileDrawerOpen(false)} />
+            </Suspense>
+          </div>
+        </div>
+      )}
+
+      {/* Main content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Mobile header bar */}
+        <div className="h-12 bg-mc-bg-secondary border-b border-mc-border flex md:hidden items-center px-4 gap-3 flex-shrink-0">
+          <button onClick={() => setMobileDrawerOpen(true)} className="p-1">
+            <Menu className="w-5 h-5 text-mc-text-secondary" />
+          </button>
+          <Zap className="w-4 h-4 text-mc-accent-cyan" />
+          <span className="font-semibold text-sm uppercase tracking-wider">Mission Control</span>
+        </div>
+
+        <main className="flex-1 overflow-hidden">
+          <Suspense fallback={
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-4xl animate-pulse">🦞</div>
+            </div>
+          }>
+            <DashboardContent />
+          </Suspense>
+        </main>
+      </div>
     </div>
   );
 }
