@@ -312,7 +312,7 @@ function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
         {/* Assigned agent */}
         {task.assigned_agent && (
           <div className="flex items-center gap-2 mb-3 py-1.5 px-2 bg-mc-bg-tertiary/50 rounded">
-            <span className="text-base">{(task.assigned_agent as unknown as { avatar_emoji: string }).avatar_emoji}</span>
+            <span className="w-6 h-6 rounded-full bg-mc-bg-tertiary border border-mc-border/50 flex items-center justify-center text-[10px] font-bold text-mc-accent uppercase">{(task.assigned_agent as unknown as { name: string }).name.slice(0, 2)}</span>
             <span className="text-xs text-mc-text-secondary truncate">
               {(task.assigned_agent as unknown as { name: string }).name}
             </span>

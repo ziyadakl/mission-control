@@ -157,27 +157,6 @@ export function AgentModal({ agent, onClose, workspaceId, onAgentCreated }: Agen
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4">
           {activeTab === 'info' && (
             <div className="space-y-4">
-              {/* Avatar Selection */}
-              <div>
-                <label className="block text-sm font-medium mb-2">Avatar</label>
-                <div className="flex flex-wrap gap-2">
-                  {EMOJI_OPTIONS.map((emoji) => (
-                    <button
-                      key={emoji}
-                      type="button"
-                      onClick={() => setForm({ ...form, avatar_emoji: emoji })}
-                      className={`text-2xl p-2 rounded hover:bg-mc-bg-tertiary ${
-                        form.avatar_emoji === emoji
-                          ? 'bg-mc-accent/20 ring-2 ring-mc-accent'
-                          : ''
-                      }`}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               {/* Name */}
               <div>
                 <label className="block text-sm font-medium mb-1">Name</label>

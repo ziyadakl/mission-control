@@ -268,7 +268,7 @@ export function AgentsSidebar({ workspaceId, isDrawerOpen, onDrawerClose }: Agen
                   className="relative group"
                   title={`${agent.name} - ${agent.role}`}
                 >
-                  <span className="text-2xl">{agent.avatar_emoji}</span>
+                  <span className="w-8 h-8 rounded-full bg-mc-bg-tertiary border border-mc-border/50 flex items-center justify-center text-xs font-bold text-mc-accent uppercase">{agent.name.slice(0, 2)}</span>
                   {openclawSession && (
                     <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-mc-bg-secondary" />
                   )}
@@ -347,8 +347,8 @@ export function AgentsSidebar({ workspaceId, isDrawerOpen, onDrawerClose }: Agen
                         className="w-full flex items-center gap-3 p-2 text-left"
                       >
                         {/* Avatar */}
-                        <div className="text-2xl relative">
-                          {agent.avatar_emoji}
+                        <div className="relative">
+                          <span className="w-9 h-9 rounded-full bg-mc-bg-tertiary border border-mc-border/50 flex items-center justify-center text-xs font-bold text-mc-accent uppercase">{agent.name.slice(0, 2)}</span>
                           {openclawSession && (
                             <span className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-mc-bg-secondary" />
                           )}

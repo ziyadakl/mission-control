@@ -101,7 +101,7 @@ export function StatsTray() {
             <div className="space-y-1.5">
               {agentStats.map(({ agent, active, done }) => (
                 <div key={agent.id} className="flex items-center gap-2">
-                  <span className="text-sm flex-shrink-0">{agent.avatar_emoji}</span>
+                  <span className="w-5 h-5 rounded-full bg-mc-bg-tertiary border border-mc-border/50 flex items-center justify-center text-[9px] font-bold text-mc-accent uppercase flex-shrink-0">{agent.name.slice(0, 2)}</span>
                   <span className="text-xs font-mono text-mc-text truncate flex-1">
                     {agent.name}
                   </span>

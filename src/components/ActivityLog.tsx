@@ -123,7 +123,7 @@ export function ActivityLog({ taskId }: ActivityLogProps) {
             {/* Agent info */}
             {activity.agent && (
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-sm">{activity.agent.avatar_emoji}</span>
+                <span className="w-5 h-5 rounded-full bg-mc-bg-tertiary border border-mc-border/50 flex items-center justify-center text-[9px] font-bold text-mc-accent uppercase">{activity.agent.name.slice(0, 2)}</span>
                 <span className="text-sm font-medium text-mc-text">
                   {activity.agent.name}
                 </span>
