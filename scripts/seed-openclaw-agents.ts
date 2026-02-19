@@ -42,7 +42,8 @@ function readFile(path: string): string {
 // ---------------------------------------------------------------------------
 
 const OPENCLAW_WORKSPACE = '/home/deploy/.openclaw/workspace';
-const OPENCLAW_WORKFLOWS = '/home/deploy/.openclaw/workspaces/workflows';
+const OPENCLAW_WORKFLOWS = process.env.OPENCLAW_WORKFLOWS_PATH
+  || '/home/deploy/mission-control/workflows';
 
 const bobSoulMd = readFile(`${OPENCLAW_WORKSPACE}/SOUL.md`);
 const bobUserMd = readFile(`${OPENCLAW_WORKSPACE}/USER.md`);

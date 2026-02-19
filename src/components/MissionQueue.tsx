@@ -309,6 +309,14 @@ function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
           </div>
         )}
 
+        {/* Agent working indicator */}
+        {task.status === 'in_progress' && task.assigned_agent_id && (
+          <div className="flex items-center gap-2 mb-3 py-2 px-3 bg-emerald-500/10 rounded-md border border-emerald-500/20">
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse flex-shrink-0" />
+            <span className="text-xs text-emerald-400 font-medium">Agent working...</span>
+          </div>
+        )}
+
         {/* Assigned agent */}
         {task.assigned_agent && (
           <div className="flex items-center gap-2 mb-3 py-1.5 px-2 bg-mc-bg-tertiary/50 rounded">
