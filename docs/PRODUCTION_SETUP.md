@@ -171,6 +171,70 @@ Copy this token to both:
 1. Mission Control's `.env.local`
 2. OpenClaw's gateway configuration
 
+## Security Model
+
+### Current Posture (as of Feb 2026)
+
+Port 4000 is bound to **all interfaces** (`*:4000`), not just the Tailscale interface.
+
+**Active interfaces on the VPS:**
+
+| Interface | Address | Scope |
+|-----------|---------|-------|
+| `eth0` | `187.77.16.86` | Public internet |
+| `tailscale0` | `100.99.237.12` | Tailscale VPN (WireGuard) |
+
+**Firewall status:**
+- UFW is not installed on the server
+- iptables rules could not be verified remotely (requires sudo password)
+- No application-level port binding restriction to Tailscale interface
+
+This means port 4000 is **potentially reachable from the public internet** unless the VPS host-provider's perimeter firewall (e.g. Hetzner/DigitalOcean network firewall) blocks it externally.
+
+### Defence Layers Currently Active
+
+- **Bearer Token Auth**: All API requests require `MC_API_TOKEN` in the `Authorization` header. Same-origin browser requests are exempted by middleware (`src/middleware.ts`). Without the token, all API endpoints return 401.
+- **Webhook HMAC**: Agent completion webhooks are verified via HMAC-SHA256 signature, preventing spoofed completions.
+- **Security Headers**: Configured in `next.config.mjs`:
+  - `Strict-Transport-Security` (HSTS)
+  - `X-Frame-Options: DENY`
+  - `Content-Security-Policy`
+  - `X-Content-Type-Options: nosniff`
+- **Tailscale VPN**: WireGuard-encrypted tunnel used to reach the server for SSH and browser access. All personal devices (MacBook, iPhone) are enrolled in the same Tailscale network.
+
+### Risk: Port 4000 on Public Interface
+
+If the host-provider firewall does not block port 4000, an attacker on the public internet can:
+1. Reach the Mission Control login/API surface directly at `http://187.77.16.86:4000`
+2. Attempt to brute-force the bearer token
+3. Probe for unauthenticated endpoints
+
+The bearer token is the only barrier in this scenario. There is no rate limiting, no IP allowlist, and no TLS (traffic is plaintext HTTP over the public interface).
+
+### Recommended Mitigations (in priority order)
+
+1. **Verify host-provider firewall** — Check the Hetzner/DigitalOcean/provider console to confirm whether port 4000 is blocked at the network perimeter. This is the quickest win with no code change required.
+
+2. **Install UFW and restrict port 4000** — Bind access to Tailscale only:
+   ```bash
+   ssh openclaw "sudo apt install -y ufw && sudo ufw default deny incoming && sudo ufw allow ssh && sudo ufw allow in on tailscale0 to any port 4000 && sudo ufw enable"
+   ```
+   This allows port 4000 only on the Tailscale interface while keeping SSH open on all interfaces.
+
+3. **Bind Next.js to Tailscale IP only** — Change the systemd service start command from `npm start` to:
+   ```
+   next start -H 100.99.237.12 -p 4000
+   ```
+   This prevents Next.js from listening on `eth0` at all. If the Tailscale IP ever changes (rare but possible on re-enrollment), the service will fail to start until the env var is updated.
+
+4. **Add TLS** — Terminate HTTPS via a reverse proxy (nginx + Let's Encrypt or Tailscale's built-in HTTPS with `tailscale cert`). Currently traffic is plaintext HTTP even over Tailscale.
+
+### Access Path for Normal Use
+
+Normal operation: browser on MacBook (`100.85.83.23`) -> Tailscale WireGuard tunnel -> VPS Tailscale IP (`100.99.237.12:4000`). This path is encrypted by WireGuard regardless of the port binding issue above.
+
+---
+
 ## Production Deployment
 
 ### Server Details
