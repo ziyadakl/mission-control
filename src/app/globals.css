@@ -131,6 +131,60 @@ body {
   animation: slide-in 0.2s ease-out;
 }
 
+/* Dashboard scan-line shimmer — "this system is alive" */
+@keyframes scan-line {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-scan-line {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(88, 166, 255, 0.08) 40%,
+    rgba(88, 166, 255, 0.15) 50%,
+    rgba(88, 166, 255, 0.08) 60%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: scan-line 4s ease-in-out infinite;
+}
+
+/* Accent-colored scan-line variants */
+.scan-green  { --scan-rgb: 63, 185, 80; }
+.scan-yellow { --scan-rgb: 210, 153, 34; }
+.scan-red    { --scan-rgb: 248, 81, 73; }
+.scan-purple { --scan-rgb: 163, 113, 247; }
+.scan-pink   { --scan-rgb: 219, 97, 162; }
+.scan-cyan   { --scan-rgb: 57, 211, 83; }
+
+.scan-green .animate-scan-line,
+.scan-yellow .animate-scan-line,
+.scan-red .animate-scan-line,
+.scan-purple .animate-scan-line,
+.scan-pink .animate-scan-line,
+.scan-cyan .animate-scan-line {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(var(--scan-rgb), 0.08) 40%,
+    rgba(var(--scan-rgb), 0.15) 50%,
+    rgba(var(--scan-rgb), 0.08) 60%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: scan-line 4s ease-in-out infinite;
+}
+
+/* Widget card glow-on-hover */
+.widget-card {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.widget-card:hover {
+  border-color: rgba(88, 166, 255, 0.3);
+  box-shadow: 0 0 15px rgba(88, 166, 255, 0.05), inset 0 1px 0 rgba(88, 166, 255, 0.06);
+}
+
 /* Glow effect for online status */
 .online-glow {
   box-shadow: 0 0 10px var(--mc-accent-green), 0 0 20px var(--mc-accent-green);
