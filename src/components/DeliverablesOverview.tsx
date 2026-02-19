@@ -76,11 +76,22 @@ export function DeliverablesOverview({ workspaceId }: DeliverablesOverviewProps)
         const isUrl = deliverable.deliverable_type === 'url';
         const isFile = deliverable.deliverable_type === 'file';
 
+        const previewUrl = isFile && deliverable.path
+          ? `/api/files/preview?path=${encodeURIComponent(deliverable.path)}`
+          : null;
+
         return (
           <div
             key={deliverable.id}
-            className={`group flex items-center gap-3 px-4 py-2 hover:bg-mc-bg-tertiary border-b border-mc-border/30 last:border-b-0 ${isFile ? 'cursor-default' : ''}`}
+            className="group flex items-center gap-3 px-4 py-2 hover:bg-mc-bg-tertiary border-b border-mc-border/30 last:border-b-0 cursor-pointer"
             title={isFile && deliverable.path ? deliverable.path : undefined}
+            onClick={() => {
+              if (previewUrl) {
+                window.open(previewUrl, '_blank');
+              } else if (isUrl && deliverable.path) {
+                window.open(deliverable.path, '_blank');
+              }
+            }}
           >
             {/* Type icon */}
             {isFile && (
@@ -108,17 +119,9 @@ export function DeliverablesOverview({ workspaceId }: DeliverablesOverviewProps)
               })}
             </span>
 
-            {/* External link icon for URLs — visible on row hover */}
-            {isUrl && deliverable.path && (
-              <a
-                href={deliverable.path}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <ExternalLink className="w-3 h-3 text-mc-text-secondary" />
-              </a>
+            {/* External link icon — visible on row hover */}
+            {(previewUrl || (isUrl && deliverable.path)) && (
+              <ExternalLink className="w-3 h-3 text-mc-text-secondary opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
             )}
           </div>
         );

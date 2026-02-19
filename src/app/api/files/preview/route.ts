@@ -14,9 +14,24 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'path is required' }, { status: 400 });
   }
 
-  // Only allow HTML files
-  if (!filePath.endsWith('.html') && !filePath.endsWith('.htm')) {
-    return NextResponse.json({ error: 'Only HTML files can be previewed' }, { status: 400 });
+  // Determine content type from extension
+  const ext = path.extname(filePath).toLowerCase();
+  const ALLOWED_TYPES: Record<string, string> = {
+    '.html': 'text/html',
+    '.htm': 'text/html',
+    '.json': 'application/json',
+    '.txt': 'text/plain',
+    '.md': 'text/plain',
+    '.csv': 'text/plain',
+    '.log': 'text/plain',
+  };
+
+  const contentType = ALLOWED_TYPES[ext];
+  if (!contentType) {
+    return NextResponse.json(
+      { error: `File type '${ext}' not supported for preview. Allowed: ${Object.keys(ALLOWED_TYPES).join(', ')}` },
+      { status: 400 }
+    );
   }
 
   // Expand tilde and normalize
@@ -59,7 +74,7 @@ export async function GET(request: NextRequest) {
     const content = readFileSync(resolvedPath, 'utf-8');
     return new NextResponse(content, {
       headers: {
-        'Content-Type': 'text/html',
+        'Content-Type': contentType,
       },
     });
   } catch (error) {
