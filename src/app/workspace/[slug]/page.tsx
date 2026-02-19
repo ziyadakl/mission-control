@@ -32,6 +32,8 @@ export default function WorkspacePage() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [showStatsTray, setShowStatsTray] = useState(false);
+  const [showAgentsDrawer, setShowAgentsDrawer] = useState(false);
+  const [showFeedDrawer, setShowFeedDrawer] = useState(false);
 
   // Connect to SSE for real-time updates
   useSSE();
@@ -207,19 +209,32 @@ export default function WorkspacePage() {
 
   return (
     <div className="h-screen flex flex-col bg-mc-bg overflow-hidden">
-      <Header workspace={workspace} showStatsTray={showStatsTray} onToggleStats={() => setShowStatsTray(v => !v)} />
+      <Header
+        workspace={workspace}
+        showStatsTray={showStatsTray}
+        onToggleStats={() => setShowStatsTray(v => !v)}
+        onOpenAgents={() => { setShowFeedDrawer(false); setShowAgentsDrawer(true); }}
+        onOpenFeed={() => { setShowAgentsDrawer(false); setShowFeedDrawer(true); }}
+      />
 
       {showStatsTray && <StatsTray />}
 
       <div className="flex-1 flex overflow-hidden">
         {/* Agents Sidebar */}
-        <AgentsSidebar workspaceId={workspace.id} />
+        <AgentsSidebar
+          workspaceId={workspace.id}
+          isDrawerOpen={showAgentsDrawer}
+          onDrawerClose={() => setShowAgentsDrawer(false)}
+        />
 
         {/* Main Content Area */}
         <MissionQueue workspaceId={workspace.id} />
 
         {/* Live Feed */}
-        <LiveFeed />
+        <LiveFeed
+          isDrawerOpen={showFeedDrawer}
+          onDrawerClose={() => setShowFeedDrawer(false)}
+        />
       </div>
 
       {/* Debug Panel - only shows when debug mode enabled */}

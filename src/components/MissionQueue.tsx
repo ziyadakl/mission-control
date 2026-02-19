@@ -6,6 +6,7 @@ import { useMissionControl } from '@/lib/store';
 import { triggerAutoDispatch, shouldTriggerAutoDispatch } from '@/lib/auto-dispatch';
 import type { Task, TaskStatus } from '@/lib/types';
 import { TaskModal } from './TaskModal';
+import { MobileStatusFilter } from './MobileStatusFilter';
 import { DeliverablesOverview } from './DeliverablesOverview';
 import { formatDistanceToNow } from 'date-fns';
 import { getPipelineStageInfo } from '@/lib/pipeline-utils';
@@ -30,9 +31,16 @@ export function MissionQueue({ workspaceId }: MissionQueueProps) {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [showDeliverables, setShowDeliverables] = useState(false);
+  const [mobileFilter, setMobileFilter] = useState<TaskStatus>('inbox');
 
   const getTasksByStatus = (status: TaskStatus) =>
     tasks.filter((task) => task.status === status);
+
+  // Pre-compute status counts for mobile filter
+  const statusCounts = tasks.reduce<Record<TaskStatus, number>>((acc, task) => {
+    acc[task.status] = (acc[task.status] || 0) + 1;
+    return acc;
+  }, {} as Record<TaskStatus, number>);
 
   const handleDragStart = (e: React.DragEvent, task: Task) => {
     setDraggedTask(task);
@@ -108,7 +116,7 @@ export function MissionQueue({ workspaceId }: MissionQueueProps) {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowDeliverables((v) => !v)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+            className={`flex items-center gap-2 px-2 md:px-3 py-1.5 rounded text-sm font-medium transition-colors ${
               showDeliverables
                 ? 'bg-mc-accent/20 text-mc-accent border border-mc-accent/40'
                 : 'bg-mc-bg-tertiary text-mc-text-secondary border border-mc-border/50 hover:text-mc-text hover:border-mc-border'
@@ -116,14 +124,14 @@ export function MissionQueue({ workspaceId }: MissionQueueProps) {
             title="Toggle deliverables"
           >
             <Package className="w-4 h-4" />
-            Deliverables
+            <span className="hidden md:inline">Deliverables</span>
           </button>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-mc-accent-pink text-mc-bg rounded text-sm font-medium hover:bg-mc-accent-pink/90"
+            className="flex items-center gap-2 px-2 md:px-3 py-1.5 bg-mc-accent-pink text-mc-bg rounded text-xs md:text-sm font-medium hover:bg-mc-accent-pink/90"
           >
             <Plus className="w-4 h-4" />
-            New Task
+            <span className="hidden md:inline">New Task</span>
           </button>
         </div>
       </div>
@@ -133,8 +141,8 @@ export function MissionQueue({ workspaceId }: MissionQueueProps) {
         <DeliverablesOverview workspaceId={workspaceId} />
       )}
 
-      {/* Kanban Columns */}
-      <div className="flex-1 flex gap-3 p-3 overflow-x-auto">
+      {/* Desktop: Kanban Columns */}
+      <div className="hidden md:flex flex-1 gap-3 p-3 overflow-x-auto">
         {COLUMNS.map((column) => {
           const columnTasks = getTasksByStatus(column.id);
           return (
@@ -169,6 +177,37 @@ export function MissionQueue({ workspaceId }: MissionQueueProps) {
             </div>
           );
         })}
+      </div>
+
+      {/* Mobile: Vertical list with status filter */}
+      <div className="flex md:hidden flex-col flex-1 overflow-hidden">
+        <MobileStatusFilter
+          activeStatus={mobileFilter}
+          counts={statusCounts}
+          onChange={setMobileFilter}
+        />
+        {(() => {
+          const mobileTasks = getTasksByStatus(mobileFilter);
+          return (
+            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+              {mobileTasks.length === 0 ? (
+                <div className="text-center py-12 text-mc-text-secondary text-sm">
+                  No tasks in this column
+                </div>
+              ) : (
+                mobileTasks.map((task) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    onDragStart={handleDragStart}
+                    onClick={() => setEditingTask(task)}
+                    isDragging={false}
+                  />
+                ))
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Modals */}

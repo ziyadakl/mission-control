@@ -1,14 +1,19 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronRight, ChevronLeft, Clock } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Clock, X } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import type { Event } from '@/lib/types';
 import { formatDistanceToNow } from 'date-fns';
 
 type FeedFilter = 'all' | 'tasks' | 'agents';
 
-export function LiveFeed() {
+interface LiveFeedProps {
+  isDrawerOpen?: boolean;
+  onDrawerClose?: () => void;
+}
+
+export function LiveFeed({ isDrawerOpen, onDrawerClose }: LiveFeedProps) {
   const { events } = useMissionControl();
   const [filter, setFilter] = useState<FeedFilter>('all');
   const [isMinimized, setIsMinimized] = useState(false);
@@ -67,29 +72,50 @@ export function LiveFeed() {
   };
 
   return (
-    <aside
-      className={`bg-mc-bg-secondary border-l border-mc-border flex flex-col transition-all duration-300 ease-in-out ${
-        isMinimized ? 'w-12' : 'w-80'
-      }`}
-    >
-      {/* Header */}
-      <div className="p-3 border-b border-mc-border">
-        <div className="flex items-center">
-          <button
-            onClick={toggleMinimize}
-            className="p-1 rounded hover:bg-mc-bg-tertiary text-mc-text-secondary hover:text-mc-text transition-colors"
-            aria-label={isMinimized ? 'Expand feed' : 'Minimize feed'}
-          >
-            {isMinimized ? (
-              <ChevronLeft className="w-4 h-4" />
-            ) : (
-              <ChevronRight className="w-4 h-4" />
+    <>
+      {/* Backdrop — mobile only */}
+      {isDrawerOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={onDrawerClose}
+        />
+      )}
+
+      <aside
+        className={`bg-mc-bg-secondary border-l border-mc-border flex flex-col transition-all duration-300 ease-in-out
+          fixed top-0 right-0 h-full z-50 w-80
+          ${isDrawerOpen ? 'translate-x-0' : 'translate-x-full'}
+          md:relative md:top-auto md:right-auto md:h-auto md:z-auto md:translate-x-0
+          ${isMinimized ? 'md:w-12' : 'md:w-80'}
+        `}
+      >
+        {/* Header */}
+        <div className="p-3 border-b border-mc-border">
+          <div className="flex items-center">
+            {/* Desktop: minimize/expand chevron */}
+            <button
+              onClick={toggleMinimize}
+              className="hidden md:block p-1 rounded hover:bg-mc-bg-tertiary text-mc-text-secondary hover:text-mc-text transition-colors"
+              aria-label={isMinimized ? 'Expand feed' : 'Minimize feed'}
+            >
+              {isMinimized ? (
+                <ChevronLeft className="w-4 h-4" />
+              ) : (
+                <ChevronRight className="w-4 h-4" />
+              )}
+            </button>
+            {/* Mobile: close button */}
+            <button
+              onClick={onDrawerClose}
+              className="md:hidden p-1 rounded hover:bg-mc-bg-tertiary text-mc-text-secondary hover:text-mc-text transition-colors"
+              aria-label="Close feed"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            {!isMinimized && (
+              <span className="text-sm font-medium uppercase tracking-wider">Live Feed</span>
             )}
-          </button>
-          {!isMinimized && (
-            <span className="text-sm font-medium uppercase tracking-wider">Live Feed</span>
-          )}
-        </div>
+          </div>
 
         {/* Filter Tabs */}
         {!isMinimized && (
@@ -126,6 +152,7 @@ export function LiveFeed() {
         </div>
       )}
     </aside>
+    </>
   );
 }
 

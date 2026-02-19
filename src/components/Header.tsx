@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Zap, Settings, ChevronLeft, LayoutGrid, BarChart2 } from 'lucide-react';
+import { Zap, Settings, ChevronLeft, LayoutGrid, BarChart2, Users, Activity } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import { format } from 'date-fns';
 import type { Workspace } from '@/lib/types';
@@ -12,9 +12,11 @@ interface HeaderProps {
   workspace?: Workspace;
   showStatsTray?: boolean;
   onToggleStats?: () => void;
+  onOpenAgents?: () => void;
+  onOpenFeed?: () => void;
 }
 
-export function Header({ workspace, showStatsTray, onToggleStats }: HeaderProps) {
+export function Header({ workspace, showStatsTray, onToggleStats, onOpenAgents, onOpenFeed }: HeaderProps) {
   const router = useRouter();
   const { agents, tasks, isOnline } = useMissionControl();
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -80,31 +82,53 @@ export function Header({ workspace, showStatsTray, onToggleStats }: HeaderProps)
 
   return (
     <header className="h-14 bg-mc-bg-secondary border-b border-mc-border flex items-center justify-between px-4">
-      {/* Left: Logo & Title */}
-      <div className="flex items-center gap-4">
+      {/* Left: Logo & Navigation */}
+      <div className="flex items-center gap-2 md:gap-4">
+        {/* Mobile: Agents drawer trigger */}
+        {workspace && onOpenAgents && (
+          <button
+            onClick={onOpenAgents}
+            className="p-2 hover:bg-mc-bg-tertiary rounded text-mc-text-secondary md:hidden"
+            aria-label="Open agents"
+          >
+            <Users className="w-5 h-5" />
+          </button>
+        )}
+
         <div className="flex items-center gap-2">
           <Zap className="w-5 h-5 text-mc-accent-cyan" />
-          <span className="font-semibold text-mc-text uppercase tracking-wider text-sm">
+          <span className="font-semibold text-mc-text uppercase tracking-wider text-sm hidden md:inline">
             Mission Control
           </span>
         </div>
 
         {/* Workspace indicator or back to dashboard */}
         {workspace ? (
-          <div className="flex items-center gap-2">
+          <>
+            {/* Desktop: full breadcrumb */}
+            <div className="hidden md:flex items-center gap-2">
+              <Link
+                href="/"
+                className="flex items-center gap-1 text-mc-text-secondary hover:text-mc-accent transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <LayoutGrid className="w-4 h-4" />
+              </Link>
+              <span className="text-mc-text-secondary">/</span>
+              <div className="flex items-center gap-2 px-3 py-1 bg-mc-bg-tertiary rounded">
+                <span className="text-lg">{workspace.icon}</span>
+                <span className="font-medium">{workspace.name}</span>
+              </div>
+            </div>
+            {/* Mobile: compact workspace pill */}
             <Link
               href="/"
-              className="flex items-center gap-1 text-mc-text-secondary hover:text-mc-accent transition-colors"
+              className="flex md:hidden items-center gap-1.5 px-2 py-1 bg-mc-bg-tertiary rounded"
             >
-              <ChevronLeft className="w-4 h-4" />
-              <LayoutGrid className="w-4 h-4" />
+              <span className="text-base">{workspace.icon}</span>
+              <span className="font-medium text-sm truncate max-w-[100px]">{workspace.name}</span>
             </Link>
-            <span className="text-mc-text-secondary">/</span>
-            <div className="flex items-center gap-2 px-3 py-1 bg-mc-bg-tertiary rounded">
-              <span className="text-lg">{workspace.icon}</span>
-              <span className="font-medium">{workspace.name}</span>
-            </div>
-          </div>
+          </>
         ) : (
           <Link
             href="/"
@@ -116,9 +140,9 @@ export function Header({ workspace, showStatsTray, onToggleStats }: HeaderProps)
         )}
       </div>
 
-      {/* Center: Stats - only show in workspace view */}
+      {/* Center: Stats - only show in workspace view, hidden on mobile */}
       {workspace && (
-        <div className="flex items-center gap-4">
+        <div className="hidden md:flex items-center gap-4">
           <div className="text-center">
             <div className="text-lg font-bold text-mc-accent-cyan">{activeAgents}</div>
             <div className="text-[10px] text-mc-text-secondary uppercase tracking-wider font-mono">Agents Active</div>
@@ -154,13 +178,13 @@ export function Header({ workspace, showStatsTray, onToggleStats }: HeaderProps)
         </div>
       )}
 
-      {/* Right: Time & Status */}
-      <div className="flex items-center gap-4">
-        <span className="text-mc-text-secondary text-sm font-mono">
+      {/* Right: Time, Status & Actions */}
+      <div className="flex items-center gap-2 md:gap-4">
+        <span className="text-mc-text-secondary text-sm font-mono hidden md:block">
           {format(currentTime, 'HH:mm:ss')}
         </span>
         <div
-          className={`flex items-center gap-2 px-3 py-1 rounded border text-sm font-medium ${
+          className={`flex items-center gap-1.5 md:gap-2 px-2 md:px-3 py-1 rounded border text-sm font-medium ${
             isOnline
               ? 'bg-mc-accent-green/20 border-mc-accent-green text-mc-accent-green'
               : 'bg-mc-accent-red/20 border-mc-accent-red text-mc-accent-red'
@@ -171,8 +195,20 @@ export function Header({ workspace, showStatsTray, onToggleStats }: HeaderProps)
               isOnline ? 'bg-mc-accent-green animate-pulse' : 'bg-mc-accent-red'
             }`}
           />
-          {isOnline ? 'ONLINE' : 'OFFLINE'}
+          <span className="hidden md:inline">{isOnline ? 'ONLINE' : 'OFFLINE'}</span>
         </div>
+
+        {/* Mobile: Live Feed drawer trigger */}
+        {workspace && onOpenFeed && (
+          <button
+            onClick={onOpenFeed}
+            className="p-2 hover:bg-mc-bg-tertiary rounded text-mc-text-secondary md:hidden"
+            aria-label="Open live feed"
+          >
+            <Activity className="w-5 h-5" />
+          </button>
+        )}
+
         <button
           onClick={() => router.push('/settings')}
           className="p-2 hover:bg-mc-bg-tertiary rounded text-mc-text-secondary"

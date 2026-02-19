@@ -325,7 +325,7 @@ export function TemplateEditor({ template, onClose, onSaved }: TemplateEditorPro
               Template Details
             </h3>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Name */}
               <div>
                 <label className="block text-sm font-medium text-mc-text mb-1">Name</label>
@@ -357,7 +357,7 @@ export function TemplateEditor({ template, onClose, onSaved }: TemplateEditorPro
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Category */}
               <div>
                 <label className="block text-sm font-medium text-mc-text mb-1">Category</label>
@@ -499,7 +499,7 @@ export function TemplateEditor({ template, onClose, onSaved }: TemplateEditorPro
                           </div>
                         )}
 
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                           {/* Display Name */}
                           <div>
                             <label className="block text-xs font-medium text-mc-text-secondary mb-1">
