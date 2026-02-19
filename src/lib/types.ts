@@ -53,6 +53,7 @@ export interface Task {
   updated_at: string;
   workflow_template_id?: string;
   current_stage?: number;
+  alert_reason?: string | null;
   // Joined
   workflow_template?: WorkflowTemplate;
   // Joined fields

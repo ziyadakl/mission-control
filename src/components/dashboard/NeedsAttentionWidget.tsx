@@ -45,6 +45,18 @@ export function NeedsAttentionWidget() {
           });
         }
 
+        // Tasks with quality alerts (exclude already-shown stuck tasks)
+        const stuckIds = new Set(stuckTasks.map(t => t.id));
+        const alertTasks = tasks.filter(t => t.alert_reason && !stuckIds.has(t.id));
+        for (const task of alertTasks.slice(0, 2)) {
+          const reason = task.alert_reason!;
+          const truncated = reason.length > 80 ? reason.slice(0, 80) + '...' : reason;
+          attention.push({
+            message: `"${task.title}": ${truncated}`,
+            severity: 'warning',
+          });
+        }
+
         const reviewTasks = tasks.filter(t => t.status === 'review');
         if (reviewTasks.length > 0) {
           attention.push({

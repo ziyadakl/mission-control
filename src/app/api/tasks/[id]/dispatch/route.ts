@@ -235,7 +235,7 @@ If you need help or clarification, ask the orchestrator.`;
       // Update task status to in_progress
       await supabase
         .from('tasks')
-        .update({ status: 'in_progress', updated_at: now })
+        .update({ status: 'in_progress', alert_reason: null, updated_at: now })
         .eq('id', id);
 
       // Broadcast task update

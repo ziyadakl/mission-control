@@ -35,6 +35,71 @@ function verifyWebhookSignature(signature: string, rawBody: string): boolean {
 }
 
 /**
+ * Check completion quality and set alert_reason if issues detected.
+ * Called after task status is set to 'testing'.
+ */
+async function checkCompletionQuality(
+  supabase: ReturnType<typeof getSupabase>,
+  taskId: string,
+  summary: string
+): Promise<void> {
+  try {
+    // Fetch all deliverables for this task
+    const { data: deliverables } = await supabase
+      .from('task_deliverables')
+      .select('id, title, deliverable_type, path, url, content')
+      .eq('task_id', taskId);
+
+    const allDeliverables = deliverables ?? [];
+
+    // Count deliverables with accessible content (not just local file paths)
+    const accessibleCount = allDeliverables.filter(
+      (d: { content?: string | null; url?: string | null; path?: string | null }) =>
+        d.content || d.url || (d.path && (d.path.startsWith('http://') || d.path.startsWith('https://')))
+    ).length;
+
+    // Check summary for failure signals
+    const summaryLower = (summary || '').toLowerCase();
+    const failurePatterns = [
+      '0 jobs', 'no results', 'no jobs found', 'found 0',
+      'unavailable', 'not available', 'no api key', 'failed to',
+      'no matches', 'empty results', 'could not find',
+    ];
+    const hasFailureSignal = failurePatterns.some(p => summaryLower.includes(p));
+
+    // Build alert reason
+    const reasons: string[] = [];
+
+    if (allDeliverables.length === 0) {
+      reasons.push('No deliverables registered.');
+    } else if (accessibleCount === 0) {
+      reasons.push(
+        `${allDeliverables.length} deliverable(s) registered but none have accessible content (only local file paths).`
+      );
+    }
+
+    if (hasFailureSignal) {
+      // Truncate summary to 200 chars for the alert
+      const truncated = summary.length > 200 ? summary.slice(0, 200) + '...' : summary;
+      reasons.push(`Agent summary suggests failure: "${truncated}"`);
+    }
+
+    if (reasons.length > 0) {
+      const alertReason = reasons.join(' ');
+      await supabase
+        .from('tasks')
+        .update({ alert_reason: alertReason })
+        .eq('id', taskId);
+
+      console.warn(`[WEBHOOK] Quality alert set for task ${taskId}: ${alertReason}`);
+    }
+  } catch (err) {
+    // Non-fatal — don't block completion for quality check failures
+    console.error('[WEBHOOK] Quality check error:', err);
+  }
+}
+
+/**
  * POST /api/webhooks/agent-completion
  *
  * Receives completion notifications from agents.
@@ -126,6 +191,9 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
         }
       }
+
+      // Quality gate: check deliverables and summary for issues
+      await checkCompletionQuality(supabase, task.id, body.summary || 'Task finished');
 
       // Log completion event
       const { error: eventError } = await supabase.from('events').insert({
@@ -242,6 +310,9 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
         }
       }
+
+      // Quality gate: check deliverables and summary for issues
+      await checkCompletionQuality(supabase, task.id, summary);
 
       // Log completion with summary
       const { error: eventError } = await supabase.from('events').insert({

@@ -222,11 +222,24 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         console.warn(
           `[Heartbeat] Task ${task.id} "${task.title}" appears stuck — last activity ${minutesAgo} minutes ago`
         );
+
+        // Set alert_reason on the task so UI surfaces it (only if not already set)
+        const alertMsg = `No activity for ${minutesAgo} minutes — agent may be stuck or unresponsive.`;
+        const { error: alertError } = await supabase
+          .from('tasks')
+          .update({ alert_reason: alertMsg })
+          .eq('id', task.id)
+          .is('alert_reason', null);  // only set if not already alerted
+
+        if (alertError) {
+          console.error(`[Heartbeat] Failed to set alert on task ${task.id}:`, alertError.message);
+        }
+
         actions.push({
           taskId: task.id,
           taskTitle: task.title,
           action: 'stuck',
-          reason: `No activity for ${minutesAgo} minutes (threshold: ${STALE_MINUTES} min)`,
+          reason: `No activity for ${minutesAgo} minutes (threshold: ${STALE_MINUTES} min) — alert set on task`,
         });
       }
     }

@@ -317,6 +317,16 @@ function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
           </div>
         )}
 
+        {/* Quality alert indicator */}
+        {task.alert_reason && (
+          <div className="flex items-start gap-2 mb-3 py-2 px-3 bg-amber-500/10 rounded-md border border-amber-500/20">
+            <div className="w-2 h-2 mt-1 bg-amber-500 rounded-full flex-shrink-0" />
+            <span className="text-xs text-amber-400 font-medium line-clamp-2">
+              {task.alert_reason}
+            </span>
+          </div>
+        )}
+
         {/* Assigned agent */}
         {task.assigned_agent && (
           <div className="flex items-center gap-2 mb-3 py-1.5 px-2 bg-mc-bg-tertiary/50 rounded">
