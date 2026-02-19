@@ -136,16 +136,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       const activeSession = sessionByAgent.get(task.assigned_agent_id) ?? null;
 
       if (activeSession) {
-        console.log(
-          `[Heartbeat] Skipping task ${task.id} "${task.title}" — agent ${task.assigned_agent_id} has active session ${activeSession.openclaw_session_id}`
+        // Task is inbox/assigned but agent has an "active" session — session is orphaned.
+        // Clean it up so we can re-dispatch.
+        console.warn(
+          `[Heartbeat] Task ${task.id} "${task.title}" is ${task.status} but agent has stale session ${activeSession.openclaw_session_id} — cleaning up`
         );
-        actions.push({
-          taskId: task.id,
-          taskTitle: task.title,
-          action: 'skipped',
-          reason: `Agent has active session (${activeSession.openclaw_session_id})`,
-        });
-        continue;
+        await supabase
+          .from('openclaw_sessions')
+          .delete()
+          .eq('id', activeSession.id);
+        sessionByAgent.delete(task.assigned_agent_id);
+        // Fall through to dispatch below
       }
 
       console.log(`[Heartbeat] Dispatching task ${task.id} "${task.title}" (status: ${task.status})`);

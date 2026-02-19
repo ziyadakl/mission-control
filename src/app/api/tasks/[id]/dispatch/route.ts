@@ -289,9 +289,19 @@ If you need help or clarification, ask the orchestrator.`;
       });
     } catch (err) {
       console.error('Failed to send message to agent:', err);
+
+      // Clean up the orphan session so heartbeat can retry later
+      if (session) {
+        await supabase
+          .from('openclaw_sessions')
+          .delete()
+          .eq('id', session.id);
+        console.log(`[Dispatch] Cleaned up orphan session ${session.id} after send failure`);
+      }
+
       return NextResponse.json(
-        { error: 'Internal server error' },
-        { status: 500 }
+        { error: 'Failed to send message to agent' },
+        { status: 503 }
       );
     }
   } catch (error) {
