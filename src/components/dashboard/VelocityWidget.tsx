@@ -6,6 +6,7 @@ import type { Event } from '@/lib/types';
 
 export function VelocityWidget() {
   const [dailyCounts, setDailyCounts] = useState<{ day: string; label: string; count: number }[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadVelocity = async () => {
@@ -35,10 +36,24 @@ export function VelocityWidget() {
 
         setDailyCounts(days);
       } catch {}
+      setLoading(false);
     };
 
     loadVelocity();
   }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-end justify-between gap-2 h-28">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div key={i} className="flex-1 flex flex-col items-center gap-1">
+            <div className="w-full bg-mc-bg-tertiary rounded-t flex-1 animate-pulse" />
+            <div className="h-2 w-6 bg-mc-bg-tertiary rounded animate-pulse" />
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   const maxCount = Math.max(...dailyCounts.map(d => d.count), 1);
 

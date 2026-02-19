@@ -36,12 +36,23 @@ export function WeatherWidget() {
       } catch {}
     };
 
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        pos => fetchWeather(pos.coords.latitude, pos.coords.longitude),
-        () => fetchWeather()
-      );
-    } else {
+    // Try geolocation if available and permitted, otherwise use defaults
+    try {
+      if (navigator.geolocation && navigator.permissions) {
+        navigator.permissions.query({ name: 'geolocation' }).then(result => {
+          if (result.state === 'granted' || result.state === 'prompt') {
+            navigator.geolocation.getCurrentPosition(
+              pos => fetchWeather(pos.coords.latitude, pos.coords.longitude),
+              () => fetchWeather()
+            );
+          } else {
+            fetchWeather();
+          }
+        }).catch(() => fetchWeather());
+      } else {
+        fetchWeather();
+      }
+    } catch {
       fetchWeather();
     }
 
@@ -60,7 +71,11 @@ export function WeatherWidget() {
           <div className="text-xs text-mc-text-secondary">{weather.condition}</div>
         </>
       ) : (
-        <div className="text-mc-text-secondary text-sm">Loading...</div>
+        <>
+          <div className="w-8 h-8 bg-mc-bg-tertiary rounded-full animate-pulse" />
+          <div className="h-6 w-16 bg-mc-bg-tertiary rounded animate-pulse" />
+          <div className="h-3 w-10 bg-mc-bg-tertiary rounded animate-pulse" />
+        </>
       )}
       <div className="mt-2 text-center">
         <div className="text-lg font-mono font-bold">{format(currentTime, 'HH:mm')}</div>

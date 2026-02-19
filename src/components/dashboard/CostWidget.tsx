@@ -25,7 +25,18 @@ export function CostWidget() {
   }, []);
 
   if (!stats) {
-    return <div className="text-mc-text-secondary text-sm">Loading...</div>;
+    return (
+      <div className="space-y-3">
+        <div>
+          <div className="h-6 w-16 bg-mc-bg-tertiary rounded animate-pulse" />
+          <div className="h-2 w-10 bg-mc-bg-tertiary rounded animate-pulse mt-1" />
+        </div>
+        <div>
+          <div className="h-4 w-14 bg-mc-bg-tertiary rounded animate-pulse" />
+          <div className="h-2 w-10 bg-mc-bg-tertiary rounded animate-pulse mt-1" />
+        </div>
+      </div>
+    );
   }
 
   const maxCost = Math.max(...stats.daily.map(d => d.cost), 0.01);

@@ -24,7 +24,20 @@ export function ActivitySummaryWidget() {
   }, []);
 
   if (loading) {
-    return <div className="text-mc-text-secondary text-sm">Loading...</div>;
+    return (
+      <div>
+        <div className="flex gap-3 mb-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-4 w-16 bg-mc-bg-tertiary rounded animate-pulse" />
+          ))}
+        </div>
+        <div className="space-y-1.5">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-3 w-full bg-mc-bg-tertiary rounded animate-pulse" />
+          ))}
+        </div>
+      </div>
+    );
   }
 
   // Filter to last 24h

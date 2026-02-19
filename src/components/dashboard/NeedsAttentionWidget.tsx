@@ -72,7 +72,12 @@ export function NeedsAttentionWidget() {
   }, []);
 
   if (loading) {
-    return <div className="text-mc-text-secondary text-sm">Checking...</div>;
+    return (
+      <div className="space-y-2">
+        <div className="h-4 w-48 bg-mc-bg-tertiary rounded animate-pulse" />
+        <div className="h-4 w-36 bg-mc-bg-tertiary rounded animate-pulse" />
+      </div>
+    );
   }
 
   if (items.length === 0) {

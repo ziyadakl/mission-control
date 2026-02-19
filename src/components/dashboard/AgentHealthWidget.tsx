@@ -7,6 +7,7 @@ import type { Agent } from '@/lib/types';
 export function AgentHealthWidget() {
   const router = useRouter();
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch('/api/agents')
@@ -16,7 +17,8 @@ export function AgentHealthWidget() {
         data.sort((a, b) => (order[a.status] ?? 4) - (order[b.status] ?? 4));
         setAgents(data);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
 
     const interval = setInterval(async () => {
       try {
@@ -43,6 +45,22 @@ export function AgentHealthWidget() {
   const statusPulse: Record<string, string> = {
     working: 'animate-pulse',
   };
+
+  if (loading) {
+    return (
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-2 p-2 rounded-lg">
+            <div className="w-8 h-8 rounded-full bg-mc-bg-tertiary animate-pulse" />
+            <div className="space-y-1 flex-1">
+              <div className="h-3 w-16 bg-mc-bg-tertiary rounded animate-pulse" />
+              <div className="h-2 w-12 bg-mc-bg-tertiary rounded animate-pulse" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   if (agents.length === 0) {
     return <div className="text-mc-text-secondary text-sm">No agents found</div>;
