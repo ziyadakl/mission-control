@@ -317,6 +317,48 @@ const AGENTS: AgentSeed[] = [
     description: 'Job-hunt workflow status reporter.',
   },
 
+  // ── Job-Hunt-Materials Pipeline (4) ──────────────────────────────────
+  {
+    id: 'jm-resume-tailor',
+    openclaw_agent_id: 'job-hunt-materials/resume-tailor',
+    name: 'JM Resume Tailor',
+    role: 'Materials: Resume Tailor',
+    emoji: '\u{1F4C4}',        // page facing up
+    is_master: false,
+    model: 'z.ai/glm-4.7',
+    description: 'Tailors resume bullets to match job description keywords and requirements.',
+  },
+  {
+    id: 'jm-cover-letter-writer',
+    openclaw_agent_id: 'job-hunt-materials/cover-letter-writer',
+    name: 'JM Cover Letter Writer',
+    role: 'Materials: Cover Letter Writer',
+    emoji: '\u{2709}\u{FE0F}',  // envelope
+    is_master: false,
+    model: 'z.ai/glm-4.7',
+    description: 'Generates personalized cover letters with consistent structure and company-specific tone.',
+  },
+  {
+    id: 'jm-screening-writer',
+    openclaw_agent_id: 'job-hunt-materials/screening-writer',
+    name: 'JM Screening Writer',
+    role: 'Materials: Screening Writer',
+    emoji: '\u{1F4AC}',        // speech balloon
+    is_master: false,
+    model: 'z.ai/glm-4.7',
+    description: 'Drafts screening question responses based on job description and candidate background.',
+  },
+  {
+    id: 'jm-materials-verifier',
+    openclaw_agent_id: 'job-hunt-materials/materials-verifier',
+    name: 'JM Materials Verifier',
+    role: 'Materials: Verifier',
+    emoji: '\u{2705}',         // check mark
+    is_master: false,
+    model: 'z.ai/glm-4.7',
+    description: 'Quality gate - verifies all application materials for accuracy, tone, and completeness.',
+  },
+
   // ── Bug-Fix Pipeline (6) ─────────────────────────────────────────────
   {
     id: 'bf-triager',
@@ -488,7 +530,7 @@ async function seed() {
     metadata: {
       action: 'seed',
       agent_count: AGENTS.length,
-      pipelines: ['feature-dev', 'security-audit', 'job-hunt-mining', 'bug-fix'],
+      pipelines: ['feature-dev', 'security-audit', 'job-hunt-mining', 'job-hunt-materials', 'bug-fix'],
       seeded_at: new Date().toISOString(),
     },
   });

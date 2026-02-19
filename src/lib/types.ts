@@ -277,13 +277,16 @@ export interface CreateTaskRequest {
   title: string;
   description?: string;
   priority?: TaskPriority;
-  assigned_agent_id?: string;
-  created_by_agent_id?: string;
-  due_date?: string;
+  assigned_agent_id?: string | null;
+  created_by_agent_id?: string | null;
+  due_date?: string | null;
+  workspace_id?: string;
+  workflow_template_id?: string | null;
 }
 
 export interface UpdateTaskRequest extends Partial<CreateTaskRequest> {
   status?: TaskStatus;
+  current_stage?: number | null;
 }
 
 export interface SendMessageRequest {

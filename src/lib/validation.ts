@@ -29,11 +29,12 @@ export const CreateTaskSchema = z.object({
   description: z.string().max(10000, 'Description must be 10000 characters or less').optional(),
   status: TaskStatus.optional(),
   priority: TaskPriority.optional(),
-  assigned_agent_id: z.string().uuid().optional(),
-  created_by_agent_id: z.string().uuid().optional(),
+  assigned_agent_id: z.string().max(200).optional().nullable(),
+  created_by_agent_id: z.string().max(200).optional().nullable(),
   business_id: z.string().optional(),
-  workspace_id: z.string().optional(),
-  due_date: z.string().optional(),
+  workspace_id: z.string().min(1, 'workspace_id is required'),
+  due_date: z.string().optional().nullable(),
+  workflow_template_id: z.string().max(200).optional().nullable(),
 });
 
 export const UpdateTaskSchema = z.object({
@@ -41,9 +42,11 @@ export const UpdateTaskSchema = z.object({
   description: z.string().max(10000).optional(),
   status: TaskStatus.optional(),
   priority: TaskPriority.optional(),
-  assigned_agent_id: z.string().uuid().optional().nullable(),
+  assigned_agent_id: z.string().max(200).optional().nullable(),
   due_date: z.string().optional().nullable(),
-  updated_by_agent_id: z.string().uuid().optional(),
+  updated_by_agent_id: z.string().max(200).optional(),
+  workflow_template_id: z.string().max(200).optional().nullable(),
+  current_stage: z.number().int().min(1).optional().nullable(),
 });
 
 // Activity validation schema

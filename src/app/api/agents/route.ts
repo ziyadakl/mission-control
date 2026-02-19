@@ -9,6 +9,7 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = getSupabase();
     const workspaceId = request.nextUrl.searchParams.get('workspace_id');
+    const openclawAgentId = request.nextUrl.searchParams.get('openclaw_agent_id');
 
     let query = supabase
       .from('agents')
@@ -19,6 +20,9 @@ export async function GET(request: NextRequest) {
 
     if (workspaceId) {
       query = query.eq('workspace_id', workspaceId);
+    }
+    if (openclawAgentId) {
+      query = query.eq('openclaw_agent_id', openclawAgentId);
     }
 
     const { data: agents, error } = await query;

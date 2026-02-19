@@ -135,9 +135,14 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
           }
           onClose();
         }
+      } else {
+        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Failed to save task:', errorData);
+        alert(`Failed to save task: ${errorData.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Failed to save task:', error);
+      alert(`Failed to save task: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -356,17 +361,30 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
               <label className="block text-sm font-medium mb-1">Workflow Template</label>
               <select
                 value={form.workflow_template_id}
-                onChange={(e) => {
+                onChange={async (e) => {
                   const templateId = e.target.value;
                   const template = templates.find(t => t.id === templateId);
                   const updates: Partial<typeof form> = { workflow_template_id: templateId };
                   // Auto-suggest first-stage agent when template is selected
                   if (template?.roles?.length) {
                     const firstRole = template.roles.sort((a, b) => a.stage_order - b.stage_order)[0];
-                    const firstAgentId = `${template.slug}-${firstRole.role_slug}`;
-                    const agentExists = agents.find(a => a.id === firstAgentId);
-                    if (agentExists) {
-                      updates.assigned_agent_id = firstAgentId;
+                    const openclawId = `${template.slug}/${firstRole.role_slug}`;
+                    // Check local agents first, then fetch across workspaces
+                    const localMatch = agents.find(a => a.openclaw_agent_id === openclawId);
+                    if (localMatch) {
+                      updates.assigned_agent_id = localMatch.id;
+                    } else {
+                      // Agent may be in a different workspace — fetch by openclaw_agent_id
+                      try {
+                        const res = await fetch(`/api/agents?openclaw_agent_id=${encodeURIComponent(openclawId)}`);
+                        if (res.ok) {
+                          const allAgents = await res.json();
+                          const match = Array.isArray(allAgents) ? allAgents[0] : null;
+                          if (match) {
+                            updates.assigned_agent_id = match.id;
+                          }
+                        }
+                      } catch { /* non-critical, skip auto-suggest */ }
                     }
                   }
                   setForm({ ...form, ...updates });

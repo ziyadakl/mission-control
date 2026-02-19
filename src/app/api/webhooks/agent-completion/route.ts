@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { getSupabase } from '@/lib/db';
+import { processPipelineCompletion } from '@/lib/pipeline-handoff';
 import type { Task, OpenClawSession } from '@/lib/types';
 
 /**
@@ -149,11 +150,21 @@ export async function POST(request: NextRequest) {
           .eq('id', task.assigned_agent_id);
       }
 
+      // Check for pipeline handoff (cross-pipeline task creation)
+      let handoffResult = null;
+      if (task.workflow_template_id) {
+        handoffResult = await processPipelineCompletion(
+          task.id,
+          task.workflow_template_id
+        );
+      }
+
       return NextResponse.json({
         success: true,
         task_id: task.id,
         new_status: 'testing',
         message: 'Task moved to testing for automated verification',
+        handoff: handoffResult,
       });
     }
 
@@ -258,6 +269,15 @@ export async function POST(request: NextRequest) {
         // Non-fatal — continue
       }
 
+      // Check for pipeline handoff (cross-pipeline task creation)
+      let handoffResult = null;
+      if (task.workflow_template_id) {
+        handoffResult = await processPipelineCompletion(
+          task.id,
+          task.workflow_template_id
+        );
+      }
+
       return NextResponse.json({
         success: true,
         task_id: task.id,
@@ -265,6 +285,7 @@ export async function POST(request: NextRequest) {
         summary,
         new_status: 'testing',
         message: 'Task moved to testing for automated verification',
+        handoff: handoffResult,
       });
     }
 
