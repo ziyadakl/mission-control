@@ -158,12 +158,12 @@ export function DeliverablesList({ taskId }: DeliverablesListProps) {
                 <h4 className="font-medium text-mc-text">{deliverable.title}</h4>
               )}
               <div className="flex items-center gap-1">
-                {/* Preview button for HTML files */}
-                {deliverable.deliverable_type === 'file' && deliverable.path?.endsWith('.html') && (
+                {/* Preview button for previewable files */}
+                {deliverable.deliverable_type === 'file' && deliverable.path && /\.(html?|json|txt|md|csv|log)$/i.test(deliverable.path) && (
                   <button
                     onClick={() => handlePreview(deliverable)}
                     className="flex-shrink-0 p-1.5 hover:bg-mc-bg-tertiary rounded text-mc-accent-cyan"
-                    title="Preview in browser"
+                    title="View in browser"
                   >
                     <Eye className="w-4 h-4" />
                   </button>
@@ -199,6 +199,13 @@ export function DeliverablesList({ taskId }: DeliverablesListProps) {
                 >
                   {deliverable.path}
                 </a>
+              ) : /\.(html?|json|txt|md|csv|log)$/i.test(deliverable.path) ? (
+                <button
+                  onClick={() => handlePreview(deliverable)}
+                  className="mt-2 p-2 bg-mc-bg-tertiary rounded text-xs text-mc-accent-cyan font-mono break-all block w-full text-left hover:bg-mc-bg-tertiary/80"
+                >
+                  {deliverable.path}
+                </button>
               ) : (
                 <div className="mt-2 p-2 bg-mc-bg-tertiary rounded text-xs text-mc-text-secondary font-mono break-all">
                   {deliverable.path}
