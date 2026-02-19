@@ -192,7 +192,10 @@ The app runs as a systemd user service at `~/.config/systemd/user/mission-contro
 # 1. Sync files to VPS (from local project root)
 rsync -az --delete \
   --exclude=node_modules --exclude=.next --exclude=.git \
-  --exclude=.env --exclude='*.pem' \
+  --exclude=.env --exclude=.env.local --exclude='*.pem' \
+  --exclude=.DS_Store --exclude=.claude/ --exclude=.kilocode/ \
+  --exclude=.vscode/ --exclude=.mcp.json --exclude=opencode.json \
+  --exclude=ecosystem.config.cjs --exclude=mission-control.db \
   ./ openclaw:/home/deploy/mission-control/
 
 # 2. Install deps + build on VPS

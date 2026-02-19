@@ -69,7 +69,13 @@ Live in production since Feb 2026 on Ubuntu VPS (SSH alias: `openclaw`), port 40
 
 **Deploy (3 commands):**
 ```bash
-rsync -az --delete --exclude=node_modules --exclude=.next --exclude=.git --exclude=.env --exclude='*.pem' ./ openclaw:/home/deploy/mission-control/
+rsync -az --delete \
+  --exclude=node_modules --exclude=.next --exclude=.git \
+  --exclude=.env --exclude=.env.local --exclude='*.pem' \
+  --exclude=.DS_Store --exclude=.claude/ --exclude=.kilocode/ \
+  --exclude=.vscode/ --exclude=.mcp.json --exclude=opencode.json \
+  --exclude=ecosystem.config.cjs --exclude=mission-control.db \
+  ./ openclaw:/home/deploy/mission-control/
 ssh -T openclaw "cd /home/deploy/mission-control && npm install && npm run build"
 ssh -T openclaw "systemctl --user restart mission-control.service"
 ```
