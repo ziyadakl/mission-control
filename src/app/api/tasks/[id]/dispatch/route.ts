@@ -162,11 +162,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const taskProjectDir = `${projectsPath}/${projectDir}`;
     const missionControlUrl = getMissionControlUrl();
 
-    // If assigned to a pipeline agent, tell Bob which pipeline to use
+    // Label the pipeline agent in the message for observability
     let pipelineHint = '';
     let stageInfo = '';
     if (agent.openclaw_agent_id && !agent.is_master && agent.openclaw_agent_id !== 'worker') {
-      pipelineHint = `\n**ROUTE TO PIPELINE:** ${agent.openclaw_agent_id}\n`;
+      pipelineHint = `\n**Pipeline Agent:** ${agent.openclaw_agent_id}\n`;
     }
 
     // Stage tracking: if task has a workflow template, determine current stage
@@ -221,11 +221,10 @@ If you need help or clarification, ask the orchestrator.`;
 
     // Send message to agent's session using chat.send
     try {
-      // Use sessionKey for routing to the agent's session
-      // Format: agent:main:{openclaw_session_id}
-      // Route through the assigned agent's OpenClaw ID. Pipeline agents can't be
-      // dispatched directly, so non-master agents still route through 'main'.
-      const routeAgentId = agent.is_master ? (agent.openclaw_agent_id || 'main') : 'main';
+      // Route to the agent's OpenClaw channel via sessionKey format:
+      // agent:{openclaw_agent_id}:{session_id}
+      // Falls back to 'main' if agent has no openclaw_agent_id set.
+      const routeAgentId = agent.openclaw_agent_id || 'main';
       const sessionKey = `agent:${routeAgentId}:${session.openclaw_session_id}`;
       await client.call('chat.send', {
         sessionKey,
