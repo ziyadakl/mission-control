@@ -171,37 +171,71 @@ Copy this token to both:
 1. Mission Control's `.env.local`
 2. OpenClaw's gateway configuration
 
-## 🚀 Production Deployment
+## Production Deployment
 
-### Build for Production
+### Server Details
+
+- **VPS**: Ubuntu 24.04, SSH alias `openclaw`
+- **App path**: `/home/deploy/mission-control/`
+- **Port**: 4000
+- **Process manager**: systemd user service (`mission-control.service`)
+- **Tailscale IP**: accessible via `100.99.237.12:4000`
+- **Database**: Supabase Postgres (no local DB)
+
+### Systemd Service
+
+The app runs as a systemd user service at `~/.config/systemd/user/mission-control.service`. This auto-starts on boot and auto-restarts on crash. **Never use `nohup npm start &`** — it creates zombie processes that conflict with systemd.
+
+### Deploy Process (copy-paste ready)
 
 ```bash
-npm run build
-npm start
+# 1. Sync files to VPS (from local project root)
+rsync -az --delete \
+  --exclude=node_modules --exclude=.next --exclude=.git \
+  --exclude=.env --exclude='*.pem' \
+  ./ openclaw:/home/deploy/mission-control/
+
+# 2. Install deps + build on VPS
+ssh -T openclaw "cd /home/deploy/mission-control && npm install && npm run build"
+
+# 3. Restart via systemd (single command, no hanging)
+ssh -T openclaw "systemctl --user restart mission-control.service"
+
+# 4. Verify (wait a few seconds for startup)
+sleep 3
+ssh -T openclaw "systemctl --user is-active mission-control.service && curl -s -o /dev/null -w '%{http_code}' http://localhost:4000"
 ```
 
-### Environment Variables for Production
+Expected output: `active200`
 
-Create `.env.production.local`:
+### Why SSH Hangs (and how to avoid it)
 
+SSH hangs when a child process (like `npm start`) keeps stdout/stderr open. Solutions:
+
+- **Use systemd** (correct): `systemctl --user restart mission-control.service` returns immediately
+- **Never use**: `nohup npm start &` over SSH (hangs), `npm start > /tmp/log 2>&1 &` (hangs)
+- **If you must run manually**: `ssh -T openclaw "nohup npm start > /tmp/mc.log 2>&1 < /dev/null & disown"` — but this creates a process outside systemd that conflicts on restart
+
+### Troubleshooting
+
+**Port conflict (EADDRINUSE):**
 ```bash
-NODE_ENV=production
-DATABASE_PATH=/var/lib/mission-control/mission-control.db
-WORKSPACE_BASE_PATH=/var/lib/mission-control/workspace
-PROJECTS_PATH=/var/lib/mission-control/workspace/projects
-MISSION_CONTROL_URL=https://mission-control.yourdomain.com
-OPENCLAW_GATEWAY_URL=wss://gateway.yourdomain.com
-OPENCLAW_GATEWAY_TOKEN=your-production-token
+# Check what's on the port
+ssh -T openclaw "fuser 4000/tcp"
+# Kill it
+ssh -T openclaw "fuser -k 4000/tcp"
+# Then restart via systemd
+ssh -T openclaw "systemctl --user restart mission-control.service"
 ```
 
-### Database Backups
-
+**Check logs:**
 ```bash
-# Backup database
-cp mission-control.db mission-control.backup.$(date +%Y%m%d).db
+ssh -T openclaw "journalctl --user -u mission-control.service --no-pager -n 30"
+```
 
-# Restore from backup
-cp mission-control.backup.20250131.db mission-control.db
+**Service status:**
+```bash
+ssh -T openclaw "systemctl --user status mission-control.service"
 ```
 
 ## 🧪 Testing Your Setup

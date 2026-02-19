@@ -10,7 +10,7 @@ AI Agent Orchestration Dashboard — create tasks, plan via interactive Q&A, aut
 - Supabase (Postgres via PostgREST)
 - Zustand 5.0 (state management)
 - Zod 4.3 (validation)
-- PM2 (production deployment)
+- systemd user service (production deployment)
 - Playwright (E2E testing)
 
 ## Commands
@@ -65,7 +65,18 @@ src/
 
 ## Deployment
 
-Live in production since Feb 2026. See `docs/PRODUCTION_SETUP.md` for full details (PM2, Tailscale, SSH access, deploy workflow).
+Live in production since Feb 2026 on Ubuntu VPS (SSH alias: `openclaw`), port 4000, managed by systemd user service.
+
+**Deploy (3 commands):**
+```bash
+rsync -az --delete --exclude=node_modules --exclude=.next --exclude=.git --exclude=.env --exclude='*.pem' ./ openclaw:/home/deploy/mission-control/
+ssh -T openclaw "cd /home/deploy/mission-control && npm install && npm run build"
+ssh -T openclaw "systemctl --user restart mission-control.service"
+```
+
+**NEVER use `nohup npm start &` over SSH** — it creates zombie processes outside systemd. Always use `systemctl --user restart`.
+
+See `docs/PRODUCTION_SETUP.md` for full details.
 
 ## Docs
 
@@ -76,7 +87,7 @@ Live in production since Feb 2026. See `docs/PRODUCTION_SETUP.md` for full detai
 - `docs/REALTIME_SPEC.md` — SSE event types and streaming architecture
 - `docs/TESTING_REALTIME.md` — Real-time integration testing guide
 - `docs/VERIFICATION_CHECKLIST.md` — Pre-deployment verification checklist
-- `docs/PRODUCTION_SETUP.md` — Deployment guide (PM2, Tailscale, reverse proxy)
+- `docs/PRODUCTION_SETUP.md` — Deployment guide (systemd, Tailscale, deploy workflow)
 - `docs/claude-workflow.md` — Claude Code best practices for this project
 
 ## Workflow
