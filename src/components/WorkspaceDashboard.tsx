@@ -148,7 +148,7 @@ function WorkspaceCard({ workspace, onDelete }: { workspace: WorkspaceStats; onD
   return (
     <>
     <Link href={`/workspace/${workspace.slug}`}>
-      <div className="bg-mc-bg-secondary border border-mc-border rounded-xl p-6 hover:border-mc-accent/50 transition-all hover:shadow-lg cursor-pointer group relative">
+      <div className="bg-mc-bg-secondary border border-mc-border rounded-xl p-6 hover:border-mc-accent/50 transition-all hover:shadow-lg cursor-pointer group relative min-h-[200px] flex flex-col">
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
             <span className="text-3xl">{"📁"}</span>
@@ -178,7 +178,7 @@ function WorkspaceCard({ workspace, onDelete }: { workspace: WorkspaceStats; onD
         </div>
 
         {/* Simple task/agent counts */}
-        <div className="flex items-center gap-4 text-sm text-mc-text-secondary mt-4">
+        <div className="flex items-center gap-4 text-sm text-mc-text-secondary mt-auto pt-4">
           <div className="flex items-center gap-1">
             <CheckSquare className="w-4 h-4" />
             <span>{workspace.taskCounts.total} tasks</span>
