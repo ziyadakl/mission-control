@@ -73,7 +73,7 @@ export function MissionQueue({ workspaceId }: MissionQueueProps) {
       if (res.ok) {
         // Add event
         addEvent({
-          id: crypto.randomUUID(),
+          id: self.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36),
           type: targetStatus === 'done' ? 'task_completed' : 'task_status_changed',
           task_id: draggedTask.id,
           message: `Task "${draggedTask.title}" moved to ${targetStatus}`,

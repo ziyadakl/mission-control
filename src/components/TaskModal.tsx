@@ -106,13 +106,15 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
           onClose();
         } else {
           addTask(savedTask);
-          addEvent({
-            id: crypto.randomUUID(),
-            type: 'task_created',
-            task_id: savedTask.id,
-            message: `New task: ${savedTask.title}`,
-            created_at: new Date().toISOString(),
-          });
+          try {
+            addEvent({
+              id: self.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36),
+              type: 'task_created',
+              task_id: savedTask.id,
+              message: `New task: ${savedTask.title}`,
+              created_at: new Date().toISOString(),
+            });
+          } catch { /* non-critical, SSE will deliver the event */ }
 
           // If planning mode is enabled, auto-generate questions and keep modal open
           if (usePlanningMode) {
