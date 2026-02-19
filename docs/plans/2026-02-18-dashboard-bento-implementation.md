@@ -8,6 +8,144 @@
 
 **Tech Stack:** Next.js 14.2 (App Router), React 18.2, TypeScript 5.7, Tailwind CSS 3.4, Zustand 5.0, Open-Meteo API (weather), Supabase (new `daily_stats` table)
 
+**Visual Direction:** "Deep Space Ops" — pushes the existing GitHub-dark + JetBrains Mono aesthetic into command-center territory. Light is signal: in the darkness, only important things glow. Widget cards use colored top-border accents (matching Kanban column pattern), subtle inner gradient tints, and a scan-line shimmer animation on healthy cards. No box-shadows — depth comes from border-glow effects. Data density maximized. Color = meaning (every accent already has semantics). Animation restrained to two motions: scan-line shimmer (alive signal) and slide-in (data load).
+
+---
+
+### Task 0: Add dashboard CSS animations and WidgetCard visual foundation
+
+**Files:**
+- Modify: `src/app/globals.css`
+- Create: `src/components/dashboard/WidgetCard.tsx`
+
+This task establishes the visual foundation all widgets inherit.
+
+**Step 1: Add dashboard animations to globals.css**
+
+Add after the existing `animate-slide-in` keyframe:
+
+```css
+/* Dashboard scan-line shimmer — "this system is alive" */
+@keyframes scan-line {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-scan-line {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(88, 166, 255, 0.08) 40%,
+    rgba(88, 166, 255, 0.15) 50%,
+    rgba(88, 166, 255, 0.08) 60%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: scan-line 4s ease-in-out infinite;
+}
+
+/* Accent-colored scan-line variants */
+.scan-green  { --scan-rgb: 63, 185, 80; }
+.scan-yellow { --scan-rgb: 210, 153, 34; }
+.scan-red    { --scan-rgb: 248, 81, 73; }
+.scan-purple { --scan-rgb: 163, 113, 247; }
+.scan-pink   { --scan-rgb: 219, 97, 162; }
+.scan-cyan   { --scan-rgb: 57, 211, 83; }
+
+.scan-green .animate-scan-line,
+.scan-yellow .animate-scan-line,
+.scan-red .animate-scan-line,
+.scan-purple .animate-scan-line,
+.scan-pink .animate-scan-line,
+.scan-cyan .animate-scan-line {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(var(--scan-rgb), 0.08) 40%,
+    rgba(var(--scan-rgb), 0.15) 50%,
+    rgba(var(--scan-rgb), 0.08) 60%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: scan-line 4s ease-in-out infinite;
+}
+
+/* Widget card glow-on-hover */
+.widget-card {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.widget-card:hover {
+  border-color: rgba(88, 166, 255, 0.3);
+  box-shadow: 0 0 15px rgba(88, 166, 255, 0.05), inset 0 1px 0 rgba(88, 166, 255, 0.06);
+}
+```
+
+**Step 2: Create the WidgetCard component with visual polish**
+
+`src/components/dashboard/WidgetCard.tsx`:
+
+```tsx
+interface WidgetCardProps {
+  title: string;
+  children: React.ReactNode;
+  className?: string;
+  /** Semantic accent color for the top border. Matches Kanban column color system. */
+  accent?: 'blue' | 'green' | 'yellow' | 'red' | 'purple' | 'pink' | 'cyan';
+}
+
+const ACCENT_BORDER: Record<string, string> = {
+  blue:   'border-t-mc-accent',
+  green:  'border-t-mc-accent-green',
+  yellow: 'border-t-mc-accent-yellow',
+  red:    'border-t-mc-accent-red',
+  purple: 'border-t-mc-accent-purple',
+  pink:   'border-t-mc-accent-pink',
+  cyan:   'border-t-mc-accent-cyan',
+};
+
+const ACCENT_TINT: Record<string, string> = {
+  blue:   'from-mc-accent/5',
+  green:  'from-mc-accent-green/5',
+  yellow: 'from-mc-accent-yellow/5',
+  red:    'from-mc-accent-red/5',
+  purple: 'from-mc-accent-purple/5',
+  pink:   'from-mc-accent-pink/5',
+  cyan:   'from-mc-accent-cyan/5',
+};
+
+export function WidgetCard({ title, children, className = '', accent = 'blue' }: WidgetCardProps) {
+  return (
+    <div className={`widget-card relative bg-mc-bg-secondary border border-mc-border rounded-xl overflow-hidden ${className}`}>
+      {/* Colored top border — same pattern as Kanban column headers */}
+      <div className={`h-0.5 border-t-2 ${ACCENT_BORDER[accent]}`} />
+
+      {/* Scan-line shimmer overlay */}
+      <div className="animate-scan-line absolute inset-0 pointer-events-none rounded-xl" />
+
+      {/* Inner content with subtle accent tint gradient */}
+      <div className={`relative bg-gradient-to-b ${ACCENT_TINT[accent]} to-transparent p-4`}>
+        <h3 className="text-[10px] uppercase tracking-wider text-mc-text-secondary font-mono mb-3">
+          {title}
+        </h3>
+        {children}
+      </div>
+    </div>
+  );
+}
+```
+
+**Step 3: Verify lint and build pass**
+
+Run: `npm run lint && npm run build`
+Expected: Both pass.
+
+**Step 4: Commit**
+
+```bash
+git add src/app/globals.css src/components/dashboard/WidgetCard.tsx
+git commit -m "feat: add dashboard visual foundation — scan-line shimmer, widget card with accent borders"
+```
+
 ---
 
 ### Task 1: Create the DashboardLayout shell and AppSidebar
@@ -573,32 +711,32 @@ export function DashboardOverview() {
     <div className="h-full overflow-y-auto p-4 md:p-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 max-w-7xl mx-auto">
         {/* Row 1 */}
-        <WidgetCard title="Agent Health" className="lg:col-span-2">
+        <WidgetCard title="Agent Health" accent="cyan" className="lg:col-span-2">
           <div className="text-mc-text-secondary text-sm">Coming in Task 5</div>
         </WidgetCard>
-        <WidgetCard title="Weather & Time">
+        <WidgetCard title="Weather & Time" accent="yellow">
           <div className="text-mc-text-secondary text-sm">Coming in Task 4</div>
         </WidgetCard>
-        <WidgetCard title="System Health">
+        <WidgetCard title="System Health" accent="green">
           <div className="text-mc-text-secondary text-sm">Coming in Task 5</div>
         </WidgetCard>
 
         {/* Row 2 */}
-        <WidgetCard title="Needs Attention" className="lg:col-span-2">
+        <WidgetCard title="Needs Attention" accent="red" className="lg:col-span-2">
           <div className="text-mc-text-secondary text-sm">Coming in Task 6</div>
         </WidgetCard>
-        <WidgetCard title="Weekly Velocity" className="lg:col-span-2">
+        <WidgetCard title="Weekly Velocity" accent="blue" className="lg:col-span-2">
           <div className="text-mc-text-secondary text-sm">Coming in Task 7</div>
         </WidgetCard>
 
         {/* Row 3 */}
-        <WidgetCard title="Activity Summary" className="lg:col-span-2">
+        <WidgetCard title="Activity (24h)" accent="purple" className="lg:col-span-2">
           <div className="text-mc-text-secondary text-sm">Coming in Task 6</div>
         </WidgetCard>
-        <WidgetCard title="Token / Cost">
+        <WidgetCard title="Token / Cost" accent="green">
           <div className="text-mc-text-secondary text-sm">Coming in Task 8</div>
         </WidgetCard>
-        <WidgetCard title="Workspaces">
+        <WidgetCard title="Workspaces" accent="pink">
           <div className="text-mc-text-secondary text-sm">Coming in Task 8</div>
         </WidgetCard>
       </div>
@@ -796,7 +934,7 @@ In `src/components/dashboard/DashboardOverview.tsx`, import and use the WeatherW
 import { WeatherWidget } from './WeatherWidget';
 
 // Replace the "Weather & Time" WidgetCard content:
-<WidgetCard title="Weather & Time">
+<WidgetCard title="Weather & Time" accent="yellow">
   <WeatherWidget />
 </WidgetCard>
 ```
@@ -1004,12 +1142,12 @@ import { AgentHealthWidget } from './AgentHealthWidget';
 import { SystemHealthWidget } from './SystemHealthWidget';
 
 // Replace Agent Health placeholder:
-<WidgetCard title="Agent Health" className="lg:col-span-2">
+<WidgetCard title="Agent Health" accent="cyan" className="lg:col-span-2">
   <AgentHealthWidget />
 </WidgetCard>
 
 // Replace System Health placeholder:
-<WidgetCard title="System Health">
+<WidgetCard title="System Health" accent="green">
   <SystemHealthWidget />
 </WidgetCard>
 ```
@@ -1233,11 +1371,11 @@ Import and replace:
 import { NeedsAttentionWidget } from './NeedsAttentionWidget';
 import { ActivitySummaryWidget } from './ActivitySummaryWidget';
 
-<WidgetCard title="Needs Attention" className="lg:col-span-2">
+<WidgetCard title="Needs Attention" accent="red" className="lg:col-span-2">
   <NeedsAttentionWidget />
 </WidgetCard>
 
-<WidgetCard title="Activity (24h)" className="lg:col-span-2">
+<WidgetCard title="Activity (24h)" accent="purple" className="lg:col-span-2">
   <ActivitySummaryWidget />
 </WidgetCard>
 ```
@@ -1323,13 +1461,16 @@ export function VelocityWidget() {
             <span className="text-[10px] font-mono text-mc-text-secondary opacity-0 group-hover:opacity-100 transition-opacity">
               {day.count}
             </span>
-            {/* Bar */}
+            {/* Bar with gradient fade + glow on today */}
             <div className="w-full bg-mc-bg-tertiary rounded-t flex-1 relative">
               <div
                 className={`absolute bottom-0 w-full rounded-t transition-all duration-300 ${
-                  isToday ? 'bg-mc-accent' : 'bg-mc-accent/40'
+                  isToday ? 'bg-gradient-to-t from-mc-accent to-mc-accent/30' : 'bg-gradient-to-t from-mc-accent/50 to-mc-accent/10'
                 }`}
-                style={{ height: `${Math.max(heightPct, 4)}%` }}
+                style={{
+                  height: `${Math.max(heightPct, 4)}%`,
+                  ...(isToday && day.count > 0 ? { boxShadow: '0 0 8px rgba(88, 166, 255, 0.4)' } : {}),
+                }}
               />
             </div>
             {/* Day label */}
@@ -1349,7 +1490,7 @@ export function VelocityWidget() {
 ```tsx
 import { VelocityWidget } from './VelocityWidget';
 
-<WidgetCard title="Weekly Velocity" className="lg:col-span-2">
+<WidgetCard title="Weekly Velocity" accent="blue" className="lg:col-span-2">
   <VelocityWidget />
 </WidgetCard>
 ```
@@ -1576,10 +1717,10 @@ Import and replace the final two placeholders:
 import { CostWidget } from './CostWidget';
 import { WorkspacesWidget } from './WorkspacesWidget';
 
-<WidgetCard title="Token / Cost">
+<WidgetCard title="Token / Cost" accent="green">
   <CostWidget />
 </WidgetCard>
-<WidgetCard title="Workspaces">
+<WidgetCard title="Workspaces" accent="pink">
   <WorkspacesWidget />
 </WidgetCard>
 ```
@@ -1707,6 +1848,7 @@ git commit -m "feat: add mobile responsive sidebar drawer and polish"
 
 | Task | Category | Effort |
 |------|----------|--------|
+| 0. Visual foundation (CSS + WidgetCard) | Design | Small |
 | 1. DashboardLayout + AppSidebar shell | Layout | Medium |
 | 2. Embed workspace view in content area | Layout | Medium |
 | 3. Bento grid with widget scaffolds | Layout | Small |
@@ -1717,9 +1859,9 @@ git commit -m "feat: add mobile responsive sidebar drawer and polish"
 | 8. Token/Cost + Workspaces + daily_stats | Widget + Backend | Medium |
 | 9. Mobile responsive + polish | Polish | Small |
 
-**Total: 9 tasks.**
+**Total: 10 tasks.**
 
-**Dependencies:** Task 1 must be done first (layout shell). Task 2 depends on Task 1. Task 3 depends on Task 1. Tasks 4-8 each depend on Task 3 (need bento grid to exist) but are independent of each other. Task 9 depends on all previous tasks.
+**Dependencies:** Task 0 must be done first (CSS + WidgetCard foundation). Task 1 depends on Task 0. Task 2 depends on Task 1. Task 3 depends on Task 0 + Task 1. Tasks 4-8 each depend on Task 3 (need bento grid to exist) but are independent of each other. Task 9 depends on all previous tasks.
 
 **What's NOT in this plan (follow-up work):**
 - Token tracking in the agent-completion webhook (needs the webhook to actually send token data)
