@@ -1,7 +1,7 @@
 'use client';
 
-import { WorkspaceDashboard } from '@/components/WorkspaceDashboard';
+import { DashboardLayout } from '@/components/DashboardLayout';
 
 export default function HomePage() {
-  return <WorkspaceDashboard />;
+  return <DashboardLayout />;
 }
