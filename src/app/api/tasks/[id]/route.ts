@@ -4,6 +4,7 @@ import { getSupabase } from '@/lib/db';
 import { broadcast } from '@/lib/events';
 import { getMissionControlUrl } from '@/lib/config';
 import { UpdateTaskSchema } from '@/lib/validation';
+import { advancePipelineStage } from '@/lib/pipeline';
 import type { UpdateTaskRequest } from '@/lib/types';
 
 // GET /api/tasks/[id] - Get a single task
@@ -214,6 +215,27 @@ export async function PATCH(
         type: 'task_updated',
         payload: task,
       });
+    }
+
+    // Pipeline stage advancement: if a pipeline task moves to review/testing
+    // and it's not on the final stage, advance to the next stage instead
+    if (
+      task &&
+      task.workflow_template_id &&
+      (validatedData.status === 'review' || validatedData.status === 'testing') &&
+      existing.status !== 'review' && existing.status !== 'testing'
+    ) {
+      const pipelineResult = await advancePipelineStage(
+        id,
+        existing.assigned_agent_id ?? undefined
+      );
+      if (pipelineResult.advanced) {
+        // Task was advanced to next stage — re-fetch and return the updated task
+        const { data: advancedResult } = await supabase.rpc('get_task_by_id', { p_task_id: id });
+        const advancedTask = Array.isArray(advancedResult) ? advancedResult[0] : advancedResult;
+        return NextResponse.json(advancedTask);
+      }
+      // If not advanced (final stage or not a pipeline), continue normal flow
     }
 
     // Trigger auto-dispatch if needed

@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { getSupabase } from '@/lib/db';
 import { processPipelineCompletion } from '@/lib/pipeline-handoff';
+import { advancePipelineStage } from '@/lib/pipeline';
 import type { Task, OpenClawSession } from '@/lib/types';
 
 /**
@@ -218,20 +219,32 @@ export async function POST(request: NextRequest) {
           .eq('id', task.assigned_agent_id);
       }
 
-      // Check for pipeline handoff (cross-pipeline task creation)
+      // Pipeline stage advancement: advance to next stage if not final
+      let pipelineResult = null;
       let handoffResult = null;
       if (task.workflow_template_id) {
-        handoffResult = await processPipelineCompletion(
+        pipelineResult = await advancePipelineStage(
           task.id,
-          task.workflow_template_id
+          task.assigned_agent_id ?? undefined,
+          body.summary
         );
+        // Only check cross-pipeline handoff if pipeline is complete (final stage)
+        if (pipelineResult.pipelineComplete) {
+          handoffResult = await processPipelineCompletion(
+            task.id,
+            task.workflow_template_id
+          );
+        }
       }
 
       return NextResponse.json({
         success: true,
         task_id: task.id,
-        new_status: 'testing',
-        message: 'Task moved to testing for automated verification',
+        new_status: pipelineResult?.advanced ? 'assigned' : 'testing',
+        message: pipelineResult?.advanced
+          ? `Pipeline advanced to stage ${pipelineResult.nextStage} (${pipelineResult.nextAgentName})`
+          : 'Task moved to testing for automated verification',
+        pipeline: pipelineResult,
         handoff: handoffResult,
       });
     }
@@ -340,13 +353,22 @@ export async function POST(request: NextRequest) {
         // Non-fatal — continue
       }
 
-      // Check for pipeline handoff (cross-pipeline task creation)
+      // Pipeline stage advancement: advance to next stage if not final
+      let pipelineResult = null;
       let handoffResult = null;
       if (task.workflow_template_id) {
-        handoffResult = await processPipelineCompletion(
+        pipelineResult = await advancePipelineStage(
           task.id,
-          task.workflow_template_id
+          (session as OpenClawSession).agent_id,
+          summary
         );
+        // Only check cross-pipeline handoff if pipeline is complete (final stage)
+        if (pipelineResult.pipelineComplete) {
+          handoffResult = await processPipelineCompletion(
+            task.id,
+            task.workflow_template_id
+          );
+        }
       }
 
       return NextResponse.json({
@@ -354,8 +376,11 @@ export async function POST(request: NextRequest) {
         task_id: task.id,
         agent_id: (session as OpenClawSession).agent_id,
         summary,
-        new_status: 'testing',
-        message: 'Task moved to testing for automated verification',
+        new_status: pipelineResult?.advanced ? 'assigned' : 'testing',
+        message: pipelineResult?.advanced
+          ? `Pipeline advanced to stage ${pipelineResult.nextStage} (${pipelineResult.nextAgentName})`
+          : 'Task moved to testing for automated verification',
+        pipeline: pipelineResult,
         handoff: handoffResult,
       });
     }
