@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/db';
 import { getMissionControlUrl } from '@/lib/config';
+import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const runAt = new Date().toISOString();
   const actions: HeartbeatAction[] = [];
 
-  console.log(`[Heartbeat] Run started at ${runAt}`);
+  logger.info('heartbeat.run', { runAt });
 
   try {
     const supabase = getSupabase();
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .order('updated_at', { ascending: true });
 
     if (tasksError) {
-      console.error('[Heartbeat] Failed to query tasks:', tasksError);
+      logger.error('heartbeat.query_failed', { error: tasksError.message });
       return NextResponse.json({ error: 'Failed to query tasks' }, { status: 500 });
     }
 
@@ -221,11 +222,24 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         console.warn(
           `[Heartbeat] Task ${task.id} "${task.title}" appears stuck — last activity ${minutesAgo} minutes ago`
         );
+
+        // Set alert_reason on the task so UI surfaces it (only if not already set)
+        const alertMsg = `No activity for ${minutesAgo} minutes — agent may be stuck or unresponsive.`;
+        const { error: alertError } = await supabase
+          .from('tasks')
+          .update({ alert_reason: alertMsg })
+          .eq('id', task.id)
+          .is('alert_reason', null);  // only set if not already alerted
+
+        if (alertError) {
+          console.error(`[Heartbeat] Failed to set alert on task ${task.id}:`, alertError.message);
+        }
+
         actions.push({
           taskId: task.id,
           taskTitle: task.title,
           action: 'stuck',
-          reason: `No activity for ${minutesAgo} minutes (threshold: ${STALE_MINUTES} min)`,
+          reason: `No activity for ${minutesAgo} minutes (threshold: ${STALE_MINUTES} min) — alert set on task`,
         });
       }
     }
@@ -238,9 +252,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       actions,
     };
 
-    console.log(
-      `[Heartbeat] Run complete in ${result.durationMs}ms — ${result.tasksProcessed} action(s) taken`
-    );
+    logger.info('heartbeat.complete', { durationMs: result.durationMs, tasksProcessed: result.tasksProcessed });
 
     return NextResponse.json(result);
   } catch (error) {

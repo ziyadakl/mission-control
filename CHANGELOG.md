@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2026-02-19
+
+### Added
+
+- **Pipeline Advancement System** — New `src/lib/pipeline.ts` module for automatic workflow template progression. Handles multi-stage agent handoffs with idempotency checks and auto-dispatch.
+- **Weather Location Display** — Weather widget now shows city/location name via reverse geocoding (OpenStreetMap Nominatim API).
+- **Fahrenheit Support** — Weather API now defaults to Fahrenheit units, configurable via URL parameters.
+
+### Changed
+
+- **Dashboard UI Redesign** — Complete visual overhaul with refined dark theme using white/opacity colors instead of custom theme variables. Updated all dashboard widgets:
+  - Cleaner, more modern card designs with backdrop blur
+  - Refined typography with better spacing and tracking
+  - Simplified color system using white opacity levels
+  - Improved loading states with skeleton animations
+  - Better hover states and transitions
+- **Weather API Enhancements** — Added reverse geocoding, location-aware caching, and changed default location to Scranton, PA.
+- **Supabase MCP Configuration** — Updated to use shell wrapper that sources `.env.local` for environment variables, with new project reference.
+
+### Technical
+
+- Removed accent color prop from `WidgetCard` component in favor of unified design system
+- Updated weather cache to include location key for proper cache invalidation
+- Enhanced weather error handling and fallback behavior
+
+---
+
 ## [1.1.0] - 2026-02-16
 
 ### 🔒 Security

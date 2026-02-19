@@ -148,8 +148,8 @@ export function SessionsList({ taskId }: SessionsListProps) {
         >
           {/* Agent Avatar */}
           <div className="flex-shrink-0">
-            {session.agent_avatar_emoji ? (
-              <span className="text-2xl">{session.agent_avatar_emoji}</span>
+            {session.agent_name ? (
+              <span className="w-8 h-8 rounded-full bg-mc-bg-tertiary border border-mc-border/50 flex items-center justify-center text-xs font-bold text-mc-accent uppercase">{session.agent_name.slice(0, 2)}</span>
             ) : (
               <Bot className="w-8 h-8 text-mc-accent" />
             )}

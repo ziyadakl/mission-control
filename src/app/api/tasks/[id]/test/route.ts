@@ -109,10 +109,38 @@ export async function POST(
     }
 
     if (!deliverables || deliverables.length === 0) {
-      return NextResponse.json(
-        { error: 'No testable deliverables found (file or url types)' },
-        { status: 400 }
-      );
+      // Instead of returning 400 (which causes infinite heartbeat loop),
+      // move to review with an alert so the user sees it
+      const now = new Date().toISOString();
+
+      const existingAlert = (task as any).alert_reason;
+      const alertReason = existingAlert
+        ? existingAlert  // preserve webhook's more detailed alert
+        : 'No testable deliverables found — automated testing skipped.';
+
+      await supabase
+        .from('tasks')
+        .update({ status: 'review', alert_reason: alertReason, updated_at: now })
+        .eq('id', taskId);
+
+      await supabase.from('task_activities').insert({
+        id: uuidv4(),
+        task_id: taskId,
+        activity_type: 'status_changed',
+        message: 'Moved to REVIEW — no testable deliverables, automated testing skipped',
+        created_at: now,
+      });
+
+      return NextResponse.json({
+        taskId,
+        taskTitle: task.title,
+        passed: false,
+        results: [],
+        summary: 'No testable deliverables found (file or url types) — moved to review with alert',
+        testedAt: now,
+        newStatus: 'review',
+        warning: 'no_deliverables',
+      });
     }
 
     // Ensure screenshots directory exists

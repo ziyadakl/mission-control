@@ -61,8 +61,16 @@ export async function POST(request: NextRequest) {
     const id = uuidv4();
     const now = new Date().toISOString();
 
-    const workspaceId = validatedData.workspace_id || 'default';
+    const workspaceId = validatedData.workspace_id;
+    if (!workspaceId) {
+      return NextResponse.json(
+        { error: 'workspace_id is required' },
+        { status: 400 }
+      );
+    }
     const status = validatedData.status || 'inbox';
+
+    const workflowTemplateId = validatedData.workflow_template_id || null;
 
     const { error: insertError } = await supabase
       .from('tasks')
@@ -76,6 +84,8 @@ export async function POST(request: NextRequest) {
         created_by_agent_id: validatedData.created_by_agent_id || null,
         workspace_id: workspaceId,
         due_date: validatedData.due_date || null,
+        workflow_template_id: workflowTemplateId,
+        current_stage: workflowTemplateId ? 1 : null,
         created_at: now,
         updated_at: now,
       });

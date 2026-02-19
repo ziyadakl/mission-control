@@ -131,7 +131,3 @@ body {
   animation: slide-in 0.2s ease-out;
 }
 
-/* Glow effect for online status */
-.online-glow {
-  box-shadow: 0 0 10px var(--mc-accent-green), 0 0 20px var(--mc-accent-green);
-}

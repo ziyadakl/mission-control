@@ -95,12 +95,33 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 
     const supabase = getSupabase();
 
-    // Find session by openclaw_session_id
-    const { data: session, error: findError } = await supabase
-      .from('openclaw_sessions')
-      .select('*')
-      .eq('openclaw_session_id', id)
-      .maybeSingle();
+    // Find session by DB id first, then fall back to openclaw_session_id
+    let session = null;
+    let findError = null;
+
+    // Try DB UUID first
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(id)) {
+      const result = await supabase
+        .from('openclaw_sessions')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      session = result.data;
+      findError = result.error;
+    }
+
+    // Fall back to openclaw_session_id
+    if (!session && !findError) {
+      const result = await supabase
+        .from('openclaw_sessions')
+        .select('*')
+        .eq('openclaw_session_id', id)
+        .limit(1)
+        .maybeSingle();
+      session = result.data;
+      findError = result.error;
+    }
 
     if (findError) {
       console.error('Failed to find session:', findError);

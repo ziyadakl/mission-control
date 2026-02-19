@@ -40,15 +40,15 @@ export async function POST(request: NextRequest) {
 
     // Security: Prevent path traversal attacks
     const normalizedPath = path.normalize(relativePath);
-    if (normalizedPath.startsWith('..') || normalizedPath.startsWith('/')) {
+    const fullPath = path.resolve(PROJECTS_BASE, normalizedPath);
+    const resolvedBase = path.resolve(PROJECTS_BASE);
+
+    if (!fullPath.startsWith(resolvedBase + path.sep) && fullPath !== resolvedBase) {
       return NextResponse.json(
-        { error: 'Invalid path: must be relative and cannot traverse upward' },
+        { error: 'Invalid path: must be within the projects directory' },
         { status: 400 }
       );
     }
-
-    // Build full path
-    const fullPath = path.join(PROJECTS_BASE, normalizedPath);
 
     // Ensure base directory exists
     if (!existsSync(PROJECTS_BASE)) {

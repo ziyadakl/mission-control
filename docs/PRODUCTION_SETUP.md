@@ -37,8 +37,9 @@ cp .env.example .env.local
 Edit `.env.local` with your configuration:
 
 ```bash
-# Database
-DATABASE_PATH=./mission-control.db
+# Supabase (Postgres)
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
 # OpenClaw Gateway
 OPENCLAW_GATEWAY_URL=ws://127.0.0.1:18789
@@ -52,16 +53,17 @@ PROJECTS_PATH=~/Documents/Shared/projects
 MISSION_CONTROL_URL=http://localhost:4000
 ```
 
-### 4. Initialize Database
+### 4. Set Up Supabase
+
+Ensure your Supabase project has the latest migrations applied. Then seed the agents table:
 
 ```bash
 npm run db:seed
 ```
 
-This creates the database and seeds it with:
-- the master agent
-- Sample tasks
-- Default business
+This seeds Supabase with:
+- The master agent
+- Default agent profiles
 
 ### 5. Start Development Server
 
@@ -120,7 +122,6 @@ Mission Control organizes files in a structured workspace:
 │   │   └── README.md
 │   └── [PROJECT_NAME_2]/
 └── mission-control/             # Mission Control app
-    └── mission-control.db       # Database
 ```
 
 ### Configuring Paths
@@ -171,37 +172,138 @@ Copy this token to both:
 1. Mission Control's `.env.local`
 2. OpenClaw's gateway configuration
 
-## 🚀 Production Deployment
+## Security Model
 
-### Build for Production
+### Current Posture (as of Feb 2026)
+
+Port 4000 is bound to **all interfaces** (`*:4000`), not just the Tailscale interface.
+
+**Active interfaces on the VPS:**
+
+| Interface | Address | Scope |
+|-----------|---------|-------|
+| `eth0` | `187.77.16.86` | Public internet |
+| `tailscale0` | `100.99.237.12` | Tailscale VPN (WireGuard) |
+
+**Firewall status:**
+- UFW is not installed on the server
+- iptables rules could not be verified remotely (requires sudo password)
+- No application-level port binding restriction to Tailscale interface
+
+This means port 4000 is **potentially reachable from the public internet** unless the VPS host-provider's perimeter firewall (e.g. Hetzner/DigitalOcean network firewall) blocks it externally.
+
+### Defence Layers Currently Active
+
+- **Bearer Token Auth**: All API requests require `MC_API_TOKEN` in the `Authorization` header. Same-origin browser requests are exempted by middleware (`src/middleware.ts`). Without the token, all API endpoints return 401.
+- **Webhook HMAC**: Agent completion webhooks are verified via HMAC-SHA256 signature, preventing spoofed completions.
+- **Security Headers**: Configured in `next.config.mjs`:
+  - `Strict-Transport-Security` (HSTS)
+  - `X-Frame-Options: DENY`
+  - `Content-Security-Policy`
+  - `X-Content-Type-Options: nosniff`
+- **Tailscale VPN**: WireGuard-encrypted tunnel used to reach the server for SSH and browser access. All personal devices (MacBook, iPhone) are enrolled in the same Tailscale network.
+
+### Risk: Port 4000 on Public Interface
+
+If the host-provider firewall does not block port 4000, an attacker on the public internet can:
+1. Reach the Mission Control login/API surface directly at `http://187.77.16.86:4000`
+2. Attempt to brute-force the bearer token
+3. Probe for unauthenticated endpoints
+
+The bearer token is the only barrier in this scenario. There is no rate limiting, no IP allowlist, and no TLS (traffic is plaintext HTTP over the public interface).
+
+### Recommended Mitigations (in priority order)
+
+1. **Verify host-provider firewall** — Check the Hetzner/DigitalOcean/provider console to confirm whether port 4000 is blocked at the network perimeter. This is the quickest win with no code change required.
+
+2. **Install UFW and restrict port 4000** — Bind access to Tailscale only:
+   ```bash
+   ssh openclaw "sudo apt install -y ufw && sudo ufw default deny incoming && sudo ufw allow ssh && sudo ufw allow in on tailscale0 to any port 4000 && sudo ufw enable"
+   ```
+   This allows port 4000 only on the Tailscale interface while keeping SSH open on all interfaces.
+
+3. **Bind Next.js to Tailscale IP only** — Change the systemd service start command from `npm start` to:
+   ```
+   next start -H 100.99.237.12 -p 4000
+   ```
+   This prevents Next.js from listening on `eth0` at all. If the Tailscale IP ever changes (rare but possible on re-enrollment), the service will fail to start until the env var is updated.
+
+4. **Add TLS** — Terminate HTTPS via a reverse proxy (nginx + Let's Encrypt or Tailscale's built-in HTTPS with `tailscale cert`). Currently traffic is plaintext HTTP even over Tailscale.
+
+### Access Path for Normal Use
+
+Normal operation: browser on MacBook (`100.85.83.23`) -> Tailscale WireGuard tunnel -> VPS Tailscale IP (`100.99.237.12:4000`). This path is encrypted by WireGuard regardless of the port binding issue above.
+
+---
+
+## Production Deployment
+
+### Server Details
+
+- **VPS**: Ubuntu 24.04, SSH alias `openclaw`
+- **App path**: `/home/deploy/mission-control/`
+- **Port**: 4000
+- **Process manager**: systemd user service (`mission-control.service`)
+- **Tailscale IP**: accessible via `100.99.237.12:4000`
+- **Database**: Supabase Postgres (no local DB)
+
+### Systemd Service
+
+The app runs as a systemd user service at `~/.config/systemd/user/mission-control.service`. This auto-starts on boot and auto-restarts on crash. **Never use `nohup npm start &`** — it creates zombie processes that conflict with systemd.
+
+### Deploy Process (copy-paste ready)
 
 ```bash
-npm run build
-npm start
+# 1. Sync files to VPS (from local project root)
+rsync -az --delete \
+  --exclude=node_modules --exclude=.next --exclude=.git \
+  --exclude=.env --exclude=.env.local --exclude='*.pem' \
+  --exclude=.DS_Store --exclude=.claude/ --exclude=.kilocode/ \
+  --exclude=.vscode/ --exclude=.mcp.json --exclude=opencode.json \
+  --exclude=ecosystem.config.cjs --exclude=mission-control.db \
+  ./ openclaw:/home/deploy/mission-control/
+
+# 2. Install deps + build on VPS
+ssh -T openclaw "cd /home/deploy/mission-control && npm install && npm run build"
+
+# 3. Restart via systemd (single command, no hanging)
+ssh -T openclaw "systemctl --user restart mission-control.service"
+
+# 4. Verify (wait a few seconds for startup)
+sleep 3
+ssh -T openclaw "systemctl --user is-active mission-control.service && curl -s -o /dev/null -w '%{http_code}' http://localhost:4000"
 ```
 
-### Environment Variables for Production
+Expected output: `active200`
 
-Create `.env.production.local`:
+### Why SSH Hangs (and how to avoid it)
 
+SSH hangs when a child process (like `npm start`) keeps stdout/stderr open. Solutions:
+
+- **Use systemd** (correct): `systemctl --user restart mission-control.service` returns immediately
+- **Never use**: `nohup npm start &` over SSH (hangs), `npm start > /tmp/log 2>&1 &` (hangs)
+- **If you must run manually**: `ssh -T openclaw "nohup npm start > /tmp/mc.log 2>&1 < /dev/null & disown"` — but this creates a process outside systemd that conflicts on restart
+
+### Troubleshooting
+
+**Port conflict (EADDRINUSE):**
 ```bash
-NODE_ENV=production
-DATABASE_PATH=/var/lib/mission-control/mission-control.db
-WORKSPACE_BASE_PATH=/var/lib/mission-control/workspace
-PROJECTS_PATH=/var/lib/mission-control/workspace/projects
-MISSION_CONTROL_URL=https://mission-control.yourdomain.com
-OPENCLAW_GATEWAY_URL=wss://gateway.yourdomain.com
-OPENCLAW_GATEWAY_TOKEN=your-production-token
+# Check what's on the port
+ssh -T openclaw "fuser 4000/tcp"
+# Kill it
+ssh -T openclaw "fuser -k 4000/tcp"
+# Then restart via systemd
+ssh -T openclaw "systemctl --user restart mission-control.service"
 ```
 
-### Database Backups
-
+**Check logs:**
 ```bash
-# Backup database
-cp mission-control.db mission-control.backup.$(date +%Y%m%d).db
+ssh -T openclaw "journalctl --user -u mission-control.service --no-pager -n 30"
+```
 
-# Restore from backup
-cp mission-control.backup.20250131.db mission-control.db
+**Service status:**
+```bash
+ssh -T openclaw "systemctl --user status mission-control.service"
 ```
 
 ## 🧪 Testing Your Setup
@@ -212,8 +314,11 @@ cp mission-control.backup.20250131.db mission-control.db
 # Check environment variables
 cat .env.local
 
-# Verify database
-ls -la mission-control.db
+# Verify Supabase connectivity
+curl -s -o /dev/null -w '%{http_code}' \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+  "$SUPABASE_URL/rest/v1/agents?limit=1"
+# Expected: 200
 ```
 
 ### 2. Test OpenClaw Connection
@@ -282,7 +387,8 @@ ls -la mission-control.db
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_PATH` | `./mission-control.db` | SQLite database file path |
+| `SUPABASE_URL` | (required) | Supabase project REST API URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | (required) | Supabase service role key (bypasses RLS) |
 | `WORKSPACE_BASE_PATH` | `~/Documents/Shared` | Base directory for workspace |
 | `PROJECTS_PATH` | `~/Documents/Shared/projects` | Directory for project folders |
 | `MISSION_CONTROL_URL` | Auto-detected | API URL for agent orchestration |
@@ -309,9 +415,9 @@ ls -la mission-control.db
 
 ## 📖 Further Reading
 
-- [Agent Protocol Documentation](docs/AGENT_PROTOCOL.md)
+- [Agent Protocol Documentation](AGENT_PROTOCOL.md)
 - [Real-Time Implementation](REALTIME_IMPLEMENTATION_SUMMARY.md)
-- [the orchestrator Orchestration Guide](src/lib/orchestration.ts)
+- [Orchestration Guide](ORCHESTRATION.md)
 - [Verification Checklist](VERIFICATION_CHECKLIST.md)
 
 ---

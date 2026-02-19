@@ -106,13 +106,15 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
           onClose();
         } else {
           addTask(savedTask);
-          addEvent({
-            id: crypto.randomUUID(),
-            type: 'task_created',
-            task_id: savedTask.id,
-            message: `New task: ${savedTask.title}`,
-            created_at: new Date().toISOString(),
-          });
+          try {
+            addEvent({
+              id: self.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36),
+              type: 'task_created',
+              task_id: savedTask.id,
+              message: `New task: ${savedTask.title}`,
+              created_at: new Date().toISOString(),
+            });
+          } catch { /* non-critical, SSE will deliver the event */ }
 
           // If planning mode is enabled, auto-generate questions and keep modal open
           if (usePlanningMode) {
@@ -135,9 +137,14 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
           }
           onClose();
         }
+      } else {
+        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Failed to save task:', errorData);
+        alert(`Failed to save task: ${errorData.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Failed to save task:', error);
+      alert(`Failed to save task: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -188,12 +195,12 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
 
         {/* Tabs - only show for existing tasks */}
         {task && (
-          <div className="flex border-b border-mc-border flex-shrink-0">
+          <div className="flex border-b border-mc-border flex-shrink-0 overflow-x-auto">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
+                className={`flex-shrink-0 flex items-center gap-2 px-3 md:px-4 py-3 text-xs md:text-sm font-medium transition-colors ${
                   activeTab === tab.id
                     ? 'text-mc-accent border-b-2 border-mc-accent'
                     : 'text-mc-text-secondary hover:text-mc-text'
@@ -356,17 +363,30 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
               <label className="block text-sm font-medium mb-1">Workflow Template</label>
               <select
                 value={form.workflow_template_id}
-                onChange={(e) => {
+                onChange={async (e) => {
                   const templateId = e.target.value;
                   const template = templates.find(t => t.id === templateId);
                   const updates: Partial<typeof form> = { workflow_template_id: templateId };
                   // Auto-suggest first-stage agent when template is selected
                   if (template?.roles?.length) {
                     const firstRole = template.roles.sort((a, b) => a.stage_order - b.stage_order)[0];
-                    const firstAgentId = `${template.slug}-${firstRole.role_slug}`;
-                    const agentExists = agents.find(a => a.id === firstAgentId);
-                    if (agentExists) {
-                      updates.assigned_agent_id = firstAgentId;
+                    const openclawId = `${template.slug}/${firstRole.role_slug}`;
+                    // Check local agents first, then fetch across workspaces
+                    const localMatch = agents.find(a => a.openclaw_agent_id === openclawId);
+                    if (localMatch) {
+                      updates.assigned_agent_id = localMatch.id;
+                    } else {
+                      // Agent may be in a different workspace — fetch by openclaw_agent_id
+                      try {
+                        const res = await fetch(`/api/agents?openclaw_agent_id=${encodeURIComponent(openclawId)}`);
+                        if (res.ok) {
+                          const allAgents = await res.json();
+                          const match = Array.isArray(allAgents) ? allAgents[0] : null;
+                          if (match) {
+                            updates.assigned_agent_id = match.id;
+                          }
+                        }
+                      } catch { /* non-critical, skip auto-suggest */ }
                     }
                   }
                   setForm({ ...form, ...updates });
@@ -400,7 +420,7 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
               <option value="">Unassigned</option>
               {agents.map((agent) => (
                 <option key={agent.id} value={agent.id}>
-                  {agent.avatar_emoji} {agent.name} - {agent.role}
+                  {agent.name} - {agent.role}
                 </option>
               ))}
               <option value="__add_new__" className="text-mc-accent">

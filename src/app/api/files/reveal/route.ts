@@ -4,12 +4,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { existsSync } from 'fs';
 import path from 'path';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export async function POST(request: NextRequest) {
   try {
@@ -51,18 +51,15 @@ export async function POST(request: NextRequest) {
 
     // Open in Finder (macOS) - reveal the file
     const platform = process.platform;
-    let command: string;
 
     if (platform === 'darwin') {
-      command = `open -R "${normalizedPath}"`;
+      await execFileAsync('open', ['-R', normalizedPath]);
     } else if (platform === 'win32') {
-      command = `explorer /select,"${normalizedPath}"`;
+      await execFileAsync('explorer', ['/select,' + normalizedPath]);
     } else {
       // Linux - open containing folder
-      command = `xdg-open "${path.dirname(normalizedPath)}"`;
+      await execFileAsync('xdg-open', [path.dirname(normalizedPath)]);
     }
-
-    await execAsync(command);
 
     console.log(`[FILE] Revealed: ${normalizedPath}`);
     return NextResponse.json({ success: true, path: normalizedPath });

@@ -103,6 +103,18 @@ export async function PATCH(
     if (validatedData.description !== undefined) updates.description = validatedData.description;
     if (validatedData.priority !== undefined) updates.priority = validatedData.priority;
     if (validatedData.due_date !== undefined) updates.due_date = validatedData.due_date;
+    if (validatedData.workflow_template_id !== undefined) {
+      updates.workflow_template_id = validatedData.workflow_template_id;
+      // Reset current_stage when template changes (including first assignment)
+      if (validatedData.workflow_template_id && validatedData.workflow_template_id !== existing.workflow_template_id) {
+        updates.current_stage = 1;
+      }
+      // Clear current_stage when template is removed
+      if (!validatedData.workflow_template_id) {
+        updates.current_stage = null;
+      }
+    }
+    if (validatedData.current_stage !== undefined) updates.current_stage = validatedData.current_stage;
 
     // Track if we need to dispatch task
     let shouldDispatch = false;

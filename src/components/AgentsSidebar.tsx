@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, ChevronRight, ChevronDown, ChevronLeft, Zap, ZapOff, Loader2 } from 'lucide-react';
+import { Plus, ChevronRight, ChevronDown, ChevronLeft, Zap, ZapOff, Loader2, X } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import type { Agent, AgentStatus, OpenClawSession } from '@/lib/types';
 import { AgentModal } from './AgentModal';
@@ -41,9 +41,11 @@ const deriveGroupOrder = (agents: Agent[]): string[] => {
 
 interface AgentsSidebarProps {
   workspaceId?: string;
+  isDrawerOpen?: boolean;
+  onDrawerClose?: () => void;
 }
 
-export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
+export function AgentsSidebar({ workspaceId, isDrawerOpen, onDrawerClose }: AgentsSidebarProps) {
   const { agents, selectedAgent, setSelectedAgent, agentOpenClawSessions, setAgentOpenClawSession } = useMissionControl();
   const [filter, setFilter] = useState<FilterTab>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -167,34 +169,55 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
   };
 
   return (
-    <aside
-      className={`bg-mc-bg-secondary border-r border-mc-border flex flex-col transition-all duration-300 ease-in-out ${
-        isMinimized ? 'w-12' : 'w-64'
-      }`}
-    >
-      {/* Header */}
-      <div className="p-3 border-b border-mc-border">
-        <div className="flex items-center">
-          <button
-            onClick={toggleMinimize}
-            className="p-1 rounded hover:bg-mc-bg-tertiary text-mc-text-secondary hover:text-mc-text transition-colors"
-            aria-label={isMinimized ? 'Expand agents' : 'Minimize agents'}
-          >
-            {isMinimized ? (
-              <ChevronRight className="w-4 h-4" />
-            ) : (
-              <ChevronLeft className="w-4 h-4" />
+    <>
+      {/* Backdrop — mobile only */}
+      {isDrawerOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={onDrawerClose}
+        />
+      )}
+
+      <aside
+        className={`bg-mc-bg-secondary border-r border-mc-border flex flex-col transition-all duration-300 ease-in-out
+          fixed top-0 left-0 h-full z-50 w-72
+          ${isDrawerOpen ? 'translate-x-0' : '-translate-x-full'}
+          md:relative md:top-auto md:left-auto md:h-auto md:z-auto md:translate-x-0
+          ${isMinimized ? 'md:w-12' : 'md:w-64'}
+        `}
+      >
+        {/* Header */}
+        <div className="p-3 border-b border-mc-border">
+          <div className="flex items-center">
+            {/* Desktop: minimize/expand chevron */}
+            <button
+              onClick={toggleMinimize}
+              className="hidden md:block p-1 rounded hover:bg-mc-bg-tertiary text-mc-text-secondary hover:text-mc-text transition-colors"
+              aria-label={isMinimized ? 'Expand agents' : 'Minimize agents'}
+            >
+              {isMinimized ? (
+                <ChevronRight className="w-4 h-4" />
+              ) : (
+                <ChevronLeft className="w-4 h-4" />
+              )}
+            </button>
+            {/* Mobile: close button */}
+            <button
+              onClick={onDrawerClose}
+              className="md:hidden p-1 rounded hover:bg-mc-bg-tertiary text-mc-text-secondary hover:text-mc-text transition-colors"
+              aria-label="Close agents"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            {!isMinimized && (
+              <>
+                <span className="text-sm font-medium uppercase tracking-wider">Agents</span>
+                <span className="bg-mc-bg-tertiary text-mc-text-secondary text-xs px-2 py-0.5 rounded ml-2">
+                  {agents.length}
+                </span>
+              </>
             )}
-          </button>
-          {!isMinimized && (
-            <>
-              <span className="text-sm font-medium uppercase tracking-wider">Agents</span>
-              <span className="bg-mc-bg-tertiary text-mc-text-secondary text-xs px-2 py-0.5 rounded ml-2">
-                {agents.length}
-              </span>
-            </>
-          )}
-        </div>
+          </div>
 
         {!isMinimized && (
           <>
@@ -245,7 +268,7 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
                   className="relative group"
                   title={`${agent.name} - ${agent.role}`}
                 >
-                  <span className="text-2xl">{agent.avatar_emoji}</span>
+                  <span className="w-8 h-8 rounded-full bg-mc-bg-tertiary border border-mc-border/50 flex items-center justify-center text-xs font-bold text-mc-accent uppercase">{agent.name.slice(0, 2)}</span>
                   {openclawSession && (
                     <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-mc-bg-secondary" />
                   )}
@@ -324,8 +347,8 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
                         className="w-full flex items-center gap-3 p-2 text-left"
                       >
                         {/* Avatar */}
-                        <div className="text-2xl relative">
-                          {agent.avatar_emoji}
+                        <div className="relative">
+                          <span className="w-9 h-9 rounded-full bg-mc-bg-tertiary border border-mc-border/50 flex items-center justify-center text-xs font-bold text-mc-accent uppercase">{agent.name.slice(0, 2)}</span>
                           {openclawSession && (
                             <span className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-mc-bg-secondary" />
                           )}
@@ -407,7 +430,9 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
         </div>
       )}
 
-      {/* Modals */}
+    </aside>
+
+      {/* Modals — outside aside to avoid clipping */}
       {showCreateModal && (
         <AgentModal onClose={() => setShowCreateModal(false)} workspaceId={workspaceId} />
       )}
@@ -418,6 +443,6 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
           workspaceId={workspaceId}
         />
       )}
-    </aside>
+    </>
   );
 }

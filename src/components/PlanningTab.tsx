@@ -457,7 +457,7 @@ export function PlanningTab({ taskId, onSpecLocked }: PlanningTabProps) {
             <div className="space-y-2">
               {state.agents.map((agent, i) => (
                 <div key={i} className="bg-mc-bg border border-mc-border rounded-lg p-3 flex items-center gap-3">
-                  <span className="text-2xl">{agent.avatar_emoji}</span>
+                  <span className="w-10 h-10 rounded-full bg-mc-bg-tertiary border border-mc-border/50 flex items-center justify-center text-sm font-bold text-mc-accent uppercase">{agent.name.slice(0, 2)}</span>
                   <div>
                     <p className="font-medium">{agent.name}</p>
                     <p className="text-sm text-mc-text-secondary">{agent.role}</p>

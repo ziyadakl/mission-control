@@ -56,7 +56,7 @@ export function StatsTray() {
 
   return (
     <div className="bg-mc-bg-secondary border-b border-mc-border px-4 py-3">
-      <div className="grid grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
         {/* Left: Status Breakdown */}
         <div>
           <h3 className="text-[10px] font-mono uppercase tracking-wider text-mc-text-secondary mb-2">
@@ -101,7 +101,7 @@ export function StatsTray() {
             <div className="space-y-1.5">
               {agentStats.map(({ agent, active, done }) => (
                 <div key={agent.id} className="flex items-center gap-2">
-                  <span className="text-sm flex-shrink-0">{agent.avatar_emoji}</span>
+                  <span className="w-5 h-5 rounded-full bg-mc-bg-tertiary border border-mc-border/50 flex items-center justify-center text-[9px] font-bold text-mc-accent uppercase flex-shrink-0">{agent.name.slice(0, 2)}</span>
                   <span className="text-xs font-mono text-mc-text truncate flex-1">
                     {agent.name}
                   </span>
