@@ -37,8 +37,9 @@ cp .env.example .env.local
 Edit `.env.local` with your configuration:
 
 ```bash
-# Database
-DATABASE_PATH=./mission-control.db
+# Supabase (Postgres)
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
 # OpenClaw Gateway
 OPENCLAW_GATEWAY_URL=ws://127.0.0.1:18789
@@ -52,16 +53,17 @@ PROJECTS_PATH=~/Documents/Shared/projects
 MISSION_CONTROL_URL=http://localhost:4000
 ```
 
-### 4. Initialize Database
+### 4. Set Up Supabase
+
+Ensure your Supabase project has the latest migrations applied. Then seed the agents table:
 
 ```bash
 npm run db:seed
 ```
 
-This creates the database and seeds it with:
-- the master agent
-- Sample tasks
-- Default business
+This seeds Supabase with:
+- The master agent
+- Default agent profiles
 
 ### 5. Start Development Server
 
@@ -120,7 +122,6 @@ Mission Control organizes files in a structured workspace:
 │   │   └── README.md
 │   └── [PROJECT_NAME_2]/
 └── mission-control/             # Mission Control app
-    └── mission-control.db       # Database
 ```
 
 ### Configuring Paths
@@ -313,8 +314,11 @@ ssh -T openclaw "systemctl --user status mission-control.service"
 # Check environment variables
 cat .env.local
 
-# Verify database
-ls -la mission-control.db
+# Verify Supabase connectivity
+curl -s -o /dev/null -w '%{http_code}' \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+  "$SUPABASE_URL/rest/v1/agents?limit=1"
+# Expected: 200
 ```
 
 ### 2. Test OpenClaw Connection
@@ -383,7 +387,8 @@ ls -la mission-control.db
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_PATH` | `./mission-control.db` | SQLite database file path |
+| `SUPABASE_URL` | (required) | Supabase project REST API URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | (required) | Supabase service role key (bypasses RLS) |
 | `WORKSPACE_BASE_PATH` | `~/Documents/Shared` | Base directory for workspace |
 | `PROJECTS_PATH` | `~/Documents/Shared/projects` | Directory for project folders |
 | `MISSION_CONTROL_URL` | Auto-detected | API URL for agent orchestration |
@@ -410,9 +415,9 @@ ls -la mission-control.db
 
 ## 📖 Further Reading
 
-- [Agent Protocol Documentation](docs/AGENT_PROTOCOL.md)
+- [Agent Protocol Documentation](AGENT_PROTOCOL.md)
 - [Real-Time Implementation](REALTIME_IMPLEMENTATION_SUMMARY.md)
-- [the orchestrator Orchestration Guide](src/lib/orchestration.ts)
+- [Orchestration Guide](ORCHESTRATION.md)
 - [Verification Checklist](VERIFICATION_CHECKLIST.md)
 
 ---
