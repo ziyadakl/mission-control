@@ -12,6 +12,7 @@ import { useMissionControl } from '@/lib/store';
 import { useSSE } from '@/hooks/useSSE';
 import type { Task, Workspace } from '@/lib/types';
 import { BarChart2, Users, Activity } from 'lucide-react';
+import { DashboardOverview } from './dashboard/DashboardOverview';
 
 function WorkspaceContent({ slug }: { slug: string }) {
   const {
@@ -200,11 +201,7 @@ function DashboardContent() {
     return <WorkspaceContent slug={activeWorkspace} />;
   }
 
-  return (
-    <div className="flex-1 flex items-center justify-center text-mc-text-secondary">
-      Overview (coming in Task 3)
-    </div>
-  );
+  return <DashboardOverview />;
 }
 
 export function DashboardLayout() {
