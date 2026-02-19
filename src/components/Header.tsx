@@ -81,6 +81,7 @@ export function Header({ workspace, showStatsTray, onToggleStats, onOpenAgents, 
   }, [tasks, todayMidnight]);
 
   return (
+    <>
     <header className="h-14 bg-mc-bg-secondary border-b border-mc-border flex items-center justify-between px-4">
       {/* Left: Logo & Navigation */}
       <div className="flex items-center gap-2 md:gap-4">
@@ -218,5 +219,36 @@ export function Header({ workspace, showStatsTray, onToggleStats, onOpenAgents, 
         </button>
       </div>
     </header>
+
+    {/* Mobile HUD Stats Bar — always visible below header */}
+    {workspace && (
+      <div className="flex md:hidden items-center justify-around bg-mc-bg border-b border-mc-border/60 px-2 py-1.5">
+        <span className="font-mono text-xs">
+          <span className="font-bold text-mc-accent-cyan">{activeAgents}</span>
+          <span className="text-mc-text-secondary text-[9px] ml-1 uppercase tracking-wider">agt</span>
+        </span>
+        <span className="text-mc-border text-[8px]">·</span>
+        <span className="font-mono text-xs">
+          <span className="font-bold text-mc-accent-purple">{tasksInQueue}</span>
+          <span className="text-mc-text-secondary text-[9px] ml-1 uppercase tracking-wider">que</span>
+        </span>
+        <span className="text-mc-border text-[8px]">·</span>
+        <span className="font-mono text-xs">
+          <span className="font-bold text-mc-accent-green">{donePercent}%</span>
+          <span className="text-mc-text-secondary text-[9px] ml-1 uppercase tracking-wider">done</span>
+        </span>
+        <span className="text-mc-border text-[8px]">·</span>
+        <span className="font-mono text-xs">
+          <span className="font-bold text-mc-accent-yellow">{pipelineCount}</span>
+          <span className="text-mc-text-secondary text-[9px] ml-1 uppercase tracking-wider">pip</span>
+        </span>
+        <span className="text-mc-border text-[8px]">·</span>
+        <span className="font-mono text-xs">
+          <span className="font-bold text-mc-accent-pink">{todayCount}</span>
+          <span className="text-mc-text-secondary text-[9px] ml-1 uppercase tracking-wider">today</span>
+        </span>
+      </div>
+    )}
+    </>
   );
 }
