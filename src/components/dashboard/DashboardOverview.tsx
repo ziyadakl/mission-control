@@ -1,6 +1,14 @@
 'use client';
 
 import { WidgetCard } from './WidgetCard';
+import { WeatherWidget } from './WeatherWidget';
+import { AgentHealthWidget } from './AgentHealthWidget';
+import { SystemHealthWidget } from './SystemHealthWidget';
+import { NeedsAttentionWidget } from './NeedsAttentionWidget';
+import { ActivitySummaryWidget } from './ActivitySummaryWidget';
+import { VelocityWidget } from './VelocityWidget';
+import { CostWidget } from './CostWidget';
+import { WorkspacesWidget } from './WorkspacesWidget';
 
 export function DashboardOverview() {
   return (
@@ -8,32 +16,32 @@ export function DashboardOverview() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 max-w-7xl mx-auto">
         {/* Row 1 */}
         <WidgetCard title="Agent Health" accent="cyan" className="lg:col-span-2">
-          <div className="text-mc-text-secondary text-sm">Coming in Task 5</div>
+          <AgentHealthWidget />
         </WidgetCard>
         <WidgetCard title="Weather & Time" accent="yellow">
-          <div className="text-mc-text-secondary text-sm">Coming in Task 4</div>
+          <WeatherWidget />
         </WidgetCard>
         <WidgetCard title="System Health" accent="green">
-          <div className="text-mc-text-secondary text-sm">Coming in Task 5</div>
+          <SystemHealthWidget />
         </WidgetCard>
 
         {/* Row 2 */}
         <WidgetCard title="Needs Attention" accent="red" className="lg:col-span-2">
-          <div className="text-mc-text-secondary text-sm">Coming in Task 6</div>
+          <NeedsAttentionWidget />
         </WidgetCard>
         <WidgetCard title="Weekly Velocity" accent="blue" className="lg:col-span-2">
-          <div className="text-mc-text-secondary text-sm">Coming in Task 7</div>
+          <VelocityWidget />
         </WidgetCard>
 
         {/* Row 3 */}
         <WidgetCard title="Activity (24h)" accent="purple" className="lg:col-span-2">
-          <div className="text-mc-text-secondary text-sm">Coming in Task 6</div>
+          <ActivitySummaryWidget />
         </WidgetCard>
         <WidgetCard title="Token / Cost" accent="green">
-          <div className="text-mc-text-secondary text-sm">Coming in Task 8</div>
+          <CostWidget />
         </WidgetCard>
         <WidgetCard title="Workspaces" accent="pink">
-          <div className="text-mc-text-secondary text-sm">Coming in Task 8</div>
+          <WorkspacesWidget />
         </WidgetCard>
       </div>
     </div>
