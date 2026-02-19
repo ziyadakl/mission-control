@@ -13,34 +13,31 @@ import { WorkspacesWidget } from './WorkspacesWidget';
 export function DashboardOverview() {
   return (
     <div className="h-full overflow-y-auto p-4 md:p-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 max-w-7xl mx-auto">
-        {/* Row 1 */}
-        <WidgetCard title="Agent Health" accent="cyan" className="lg:col-span-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 max-w-7xl mx-auto">
+        <WidgetCard title="Agents" className="lg:col-span-2">
           <AgentHealthWidget />
         </WidgetCard>
-        <WidgetCard title="Weather & Time" accent="yellow">
+        <WidgetCard title="Weather">
           <WeatherWidget />
         </WidgetCard>
-        <WidgetCard title="System Health" accent="green">
+        <WidgetCard title="System">
           <SystemHealthWidget />
         </WidgetCard>
 
-        {/* Row 2 */}
-        <WidgetCard title="Needs Attention" accent="red" className="lg:col-span-2">
+        <WidgetCard title="Attention" className="lg:col-span-2">
           <NeedsAttentionWidget />
         </WidgetCard>
-        <WidgetCard title="Weekly Velocity" accent="blue" className="lg:col-span-2">
+        <WidgetCard title="Velocity" className="lg:col-span-2">
           <VelocityWidget />
         </WidgetCard>
 
-        {/* Row 3 */}
-        <WidgetCard title="Activity (24h)" accent="purple" className="lg:col-span-2">
+        <WidgetCard title="Activity" className="lg:col-span-2">
           <ActivitySummaryWidget />
         </WidgetCard>
-        <WidgetCard title="Token / Cost" accent="green">
+        <WidgetCard title="Cost">
           <CostWidget />
         </WidgetCard>
-        <WidgetCard title="Workspaces" accent="pink">
+        <WidgetCard title="Workspaces">
           <WorkspacesWidget />
         </WidgetCard>
       </div>

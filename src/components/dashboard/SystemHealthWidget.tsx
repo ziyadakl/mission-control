@@ -47,34 +47,31 @@ export function SystemHealthWidget() {
     {
       label: 'Gateway',
       value: health.gatewayConnected ? 'Connected' : 'Disconnected',
-      color: health.gatewayConnected ? 'text-mc-accent-green' : 'text-mc-accent-red',
-      dot: health.gatewayConnected ? 'bg-mc-accent-green' : 'bg-mc-accent-red',
+      dot: health.gatewayConnected ? 'bg-emerald-400' : 'bg-red-400',
     },
     {
       label: 'Sessions',
       value: String(health.sessionCount),
-      color: 'text-mc-text',
-      dot: health.sessionCount > 0 ? 'bg-mc-accent-cyan' : 'bg-mc-text-secondary',
+      dot: health.sessionCount > 0 ? 'bg-white/60' : 'bg-white/20',
     },
     {
       label: 'Heartbeat',
       value: health.lastHeartbeat
         ? formatDistanceToNow(new Date(health.lastHeartbeat), { addSuffix: true })
         : 'Unknown',
-      color: health.heartbeatOk ? 'text-mc-accent-green' : 'text-mc-accent-yellow',
-      dot: health.heartbeatOk ? 'bg-mc-accent-green' : 'bg-mc-accent-yellow',
+      dot: health.heartbeatOk ? 'bg-emerald-400' : 'bg-amber-400',
     },
   ];
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {items.map(item => (
         <div key={item.label} className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${item.dot}`} />
-            <span className="text-xs text-mc-text-secondary">{item.label}</span>
+          <div className="flex items-center gap-2.5">
+            <span className={`w-1.5 h-1.5 rounded-full ${item.dot}`} />
+            <span className="text-[11px] text-white/30 uppercase tracking-widest">{item.label}</span>
           </div>
-          <span className={`text-xs font-medium ${item.color}`}>{item.value}</span>
+          <span className="text-[13px] text-white/70">{item.value}</span>
         </div>
       ))}
     </div>

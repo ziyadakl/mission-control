@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { AppSidebar } from './AppSidebar';
 import { AgentsSidebar } from './AgentsSidebar';
 import { MissionQueue } from './MissionQueue';
@@ -11,10 +11,11 @@ import { StatsTray } from './StatsTray';
 import { useMissionControl } from '@/lib/store';
 import { useSSE } from '@/hooks/useSSE';
 import type { Task, Workspace } from '@/lib/types';
-import { BarChart2, Users, Activity, Menu, Zap } from 'lucide-react';
+import { BarChart2, Users, Activity, Menu, Zap, ChevronLeft } from 'lucide-react';
 import { DashboardOverview } from './dashboard/DashboardOverview';
 
 function WorkspaceContent({ slug }: { slug: string }) {
+  const router = useRouter();
   const {
     setAgents, setTasks, setEvents, setTemplates,
     setIsOnline, setIsLoading, isLoading,
@@ -142,40 +143,45 @@ function WorkspaceContent({ slug }: { slug: string }) {
       {/* Workspace header bar */}
       <div className="h-12 bg-mc-bg-secondary border-b border-mc-border flex items-center justify-between px-4 flex-shrink-0">
         <div className="flex items-center gap-2">
+          <button onClick={() => router.push('/')} className="p-1 -ml-1 rounded hover:bg-white/[0.04] transition-colors text-white/40 hover:text-white/70">
+            <ChevronLeft className="w-4 h-4" />
+          </button>
           <span className="text-lg">{workspace.icon}</span>
           <span className="font-medium">{workspace.name}</span>
         </div>
-        <div className="hidden md:flex items-center gap-4">
-          <div className="text-center">
-            <span className="text-sm font-bold text-mc-accent-cyan">{workingAgents}</span>
-            <span className="text-[9px] text-mc-text-secondary ml-1 uppercase font-mono">agt</span>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 md:gap-4">
+            <div className="text-center">
+              <span className="text-sm font-mono tabular-nums text-white/70">{workingAgents}</span>
+              <span className="text-[9px] text-white/30 ml-1 uppercase tracking-wider">agt</span>
+            </div>
+            <div className="text-center">
+              <span className="text-sm font-mono tabular-nums text-white/70">{tasksInQueue}</span>
+              <span className="text-[9px] text-white/30 ml-1 uppercase tracking-wider">queue</span>
+            </div>
+            <div className="text-center">
+              <span className="text-sm font-mono tabular-nums text-white/70">{donePercent}%</span>
+              <span className="text-[9px] text-white/30 ml-1 uppercase tracking-wider">done</span>
+            </div>
+            <div className="hidden md:block text-center">
+              <span className="text-sm font-mono tabular-nums text-white/70">{pipelineCount}</span>
+              <span className="text-[9px] text-white/30 ml-1 uppercase tracking-wider">pip</span>
+            </div>
+            <div className="hidden md:block text-center">
+              <span className="text-sm font-mono tabular-nums text-white/70">{todayCount}</span>
+              <span className="text-[9px] text-white/30 ml-1 uppercase tracking-wider">today</span>
+            </div>
           </div>
-          <div className="text-center">
-            <span className="text-sm font-bold text-mc-accent-purple">{tasksInQueue}</span>
-            <span className="text-[9px] text-mc-text-secondary ml-1 uppercase font-mono">queue</span>
+          <div className="flex md:hidden items-center gap-1 ml-1">
+            <button onClick={() => { setShowFeedDrawer(false); setShowAgentsDrawer(true); }} className="p-1.5 text-white/40 hover:text-white/70">
+              <Users className="w-4 h-4" />
+            </button>
+            <button onClick={() => { setShowAgentsDrawer(false); setShowFeedDrawer(true); }} className="p-1.5 text-white/40 hover:text-white/70">
+              <Activity className="w-4 h-4" />
+            </button>
           </div>
-          <div className="text-center">
-            <span className="text-sm font-bold text-mc-accent-green">{donePercent}%</span>
-            <span className="text-[9px] text-mc-text-secondary ml-1 uppercase font-mono">done</span>
-          </div>
-          <div className="text-center">
-            <span className="text-sm font-bold text-mc-accent-yellow">{pipelineCount}</span>
-            <span className="text-[9px] text-mc-text-secondary ml-1 uppercase font-mono">pip</span>
-          </div>
-          <div className="text-center">
-            <span className="text-sm font-bold text-mc-accent-pink">{todayCount}</span>
-            <span className="text-[9px] text-mc-text-secondary ml-1 uppercase font-mono">today</span>
-          </div>
-          <button onClick={() => setShowStatsTray(v => !v)} className={`p-1.5 rounded ${showStatsTray ? 'bg-mc-accent/20 text-mc-accent' : 'text-mc-text-secondary hover:text-mc-text'}`}>
+          <button onClick={() => setShowStatsTray(v => !v)} className={`hidden md:block p-1.5 rounded ${showStatsTray ? 'bg-white/[0.06] text-white/70' : 'text-white/40 hover:text-white/70'}`}>
             <BarChart2 className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="flex md:hidden items-center gap-2">
-          <button onClick={() => { setShowFeedDrawer(false); setShowAgentsDrawer(true); }} className="p-2 text-mc-text-secondary">
-            <Users className="w-4 h-4" />
-          </button>
-          <button onClick={() => { setShowAgentsDrawer(false); setShowFeedDrawer(true); }} className="p-2 text-mc-text-secondary">
-            <Activity className="w-4 h-4" />
           </button>
         </div>
       </div>

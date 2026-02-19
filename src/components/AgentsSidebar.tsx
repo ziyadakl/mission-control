@@ -430,7 +430,9 @@ export function AgentsSidebar({ workspaceId, isDrawerOpen, onDrawerClose }: Agen
         </div>
       )}
 
-      {/* Modals */}
+    </aside>
+
+      {/* Modals — outside aside to avoid clipping */}
       {showCreateModal && (
         <AgentModal onClose={() => setShowCreateModal(false)} workspaceId={workspaceId} />
       )}
@@ -441,7 +443,6 @@ export function AgentsSidebar({ workspaceId, isDrawerOpen, onDrawerClose }: Agen
           workspaceId={workspaceId}
         />
       )}
-    </aside>
     </>
   );
 }

@@ -26,14 +26,14 @@ export function CostWidget() {
 
   if (!stats) {
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
         <div>
-          <div className="h-6 w-16 bg-mc-bg-tertiary rounded animate-pulse" />
-          <div className="h-2 w-10 bg-mc-bg-tertiary rounded animate-pulse mt-1" />
+          <div className="h-8 w-20 bg-white/[0.04] rounded-lg animate-pulse" />
+          <div className="h-3 w-10 bg-white/[0.04] rounded animate-pulse mt-2" />
         </div>
         <div>
-          <div className="h-4 w-14 bg-mc-bg-tertiary rounded animate-pulse" />
-          <div className="h-2 w-10 bg-mc-bg-tertiary rounded animate-pulse mt-1" />
+          <div className="h-5 w-16 bg-white/[0.04] rounded animate-pulse" />
+          <div className="h-3 w-10 bg-white/[0.04] rounded animate-pulse mt-2" />
         </div>
       </div>
     );
@@ -42,30 +42,29 @@ export function CostWidget() {
   const maxCost = Math.max(...stats.daily.map(d => d.cost), 0.01);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div>
-        <div className="text-lg font-bold text-mc-accent-green">${stats.todayCost.toFixed(2)}</div>
-        <div className="text-[10px] text-mc-text-secondary uppercase">Today</div>
+        <div className="text-3xl font-light tracking-tight">${stats.todayCost.toFixed(2)}</div>
+        <div className="text-[11px] uppercase tracking-widest text-white/30 mt-1">Today</div>
       </div>
       <div>
-        <div className="text-sm font-bold">${stats.weekCost.toFixed(2)}</div>
-        <div className="text-[10px] text-mc-text-secondary uppercase">This Week</div>
+        <div className="text-lg font-light tracking-tight text-white/60">${stats.weekCost.toFixed(2)}</div>
+        <div className="text-[11px] uppercase tracking-widest text-white/30 mt-1">This week</div>
       </div>
 
-      {/* Sparkline */}
       {stats.daily.length > 0 && (
-        <svg className="w-full h-6" viewBox={`0 0 ${stats.daily.length * 10} 24`}>
+        <svg className="w-full h-5" viewBox={`0 0 ${stats.daily.length * 10} 20`}>
           {stats.daily.map((d, i) => {
-            const h = (d.cost / maxCost) * 20;
+            const h = (d.cost / maxCost) * 16;
             return (
               <rect
                 key={d.date}
                 x={i * 10 + 1}
-                y={22 - h}
+                y={18 - h}
                 width={8}
                 height={Math.max(h, 1)}
-                rx={1}
-                className="fill-mc-accent/60"
+                rx={2}
+                className="fill-white/15"
               />
             );
           })}

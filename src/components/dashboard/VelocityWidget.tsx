@@ -15,7 +15,6 @@ export function VelocityWidget() {
         if (!res.ok) return;
         const events: Event[] = await res.json();
 
-        // Build last 7 days
         const days: { day: string; label: string; count: number }[] = [];
         for (let i = 6; i >= 0; i--) {
           const date = startOfDay(subDays(new Date(), i));
@@ -26,7 +25,6 @@ export function VelocityWidget() {
           });
         }
 
-        // Count task_completed events per day
         for (const event of events) {
           if (event.type !== 'task_completed') continue;
           const eventDay = format(new Date(event.created_at), 'yyyy-MM-dd');
@@ -44,11 +42,11 @@ export function VelocityWidget() {
 
   if (loading) {
     return (
-      <div className="flex items-end justify-between gap-2 h-28">
+      <div className="flex items-end justify-between gap-3 h-28">
         {Array.from({ length: 7 }).map((_, i) => (
-          <div key={i} className="flex-1 flex flex-col items-center gap-1">
-            <div className="w-full bg-mc-bg-tertiary rounded-t flex-1 animate-pulse" />
-            <div className="h-2 w-6 bg-mc-bg-tertiary rounded animate-pulse" />
+          <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
+            <div className="w-full bg-white/[0.04] rounded-md flex-1 animate-pulse" />
+            <div className="h-2 w-5 bg-white/[0.04] rounded animate-pulse" />
           </div>
         ))}
       </div>
@@ -58,31 +56,25 @@ export function VelocityWidget() {
   const maxCount = Math.max(...dailyCounts.map(d => d.count), 1);
 
   return (
-    <div className="flex items-end justify-between gap-2 h-28">
+    <div className="flex items-end justify-between gap-3 h-28">
       {dailyCounts.map((day, i) => {
         const heightPct = (day.count / maxCount) * 100;
         const isToday = i === dailyCounts.length - 1;
 
         return (
-          <div key={day.day} className="flex-1 flex flex-col items-center gap-1 group">
-            {/* Count tooltip on hover */}
-            <span className="text-[10px] font-mono text-mc-text-secondary opacity-0 group-hover:opacity-100 transition-opacity">
+          <div key={day.day} className="flex-1 flex flex-col items-center gap-1.5 group">
+            <span className="text-[11px] tabular-nums text-white/0 group-hover:text-white/40 transition-colors duration-200">
               {day.count}
             </span>
-            {/* Bar with gradient fade + glow on today */}
-            <div className="w-full bg-mc-bg-tertiary rounded-t flex-1 relative">
+            <div className="w-full bg-white/[0.04] rounded-md flex-1 relative overflow-hidden">
               <div
-                className={`absolute bottom-0 w-full rounded-t transition-all duration-300 ${
-                  isToday ? 'bg-gradient-to-t from-mc-accent to-mc-accent/30' : 'bg-gradient-to-t from-mc-accent/50 to-mc-accent/10'
+                className={`absolute bottom-0 w-full rounded-md transition-all duration-500 ${
+                  isToday ? 'bg-white/30' : 'bg-white/15'
                 }`}
-                style={{
-                  height: `${Math.max(heightPct, 4)}%`,
-                  ...(isToday && day.count > 0 ? { boxShadow: '0 0 8px rgba(88, 166, 255, 0.4)' } : {}),
-                }}
+                style={{ height: `${Math.max(heightPct, 4)}%` }}
               />
             </div>
-            {/* Day label */}
-            <span className={`text-[10px] font-mono ${isToday ? 'text-mc-accent font-bold' : 'text-mc-text-secondary'}`}>
+            <span className={`text-[11px] tracking-wider ${isToday ? 'text-white/50' : 'text-white/20'}`}>
               {day.label}
             </span>
           </div>
