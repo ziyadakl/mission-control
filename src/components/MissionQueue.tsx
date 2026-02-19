@@ -1,12 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, ChevronRight, GripVertical } from 'lucide-react';
+import { Plus, ChevronRight, GripVertical, Package } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import { triggerAutoDispatch, shouldTriggerAutoDispatch } from '@/lib/auto-dispatch';
 import type { Task, TaskStatus } from '@/lib/types';
 import { TaskModal } from './TaskModal';
+import { DeliverablesOverview } from './DeliverablesOverview';
 import { formatDistanceToNow } from 'date-fns';
+import { getPipelineStageInfo } from '@/lib/pipeline-utils';
 
 interface MissionQueueProps {
   workspaceId?: string;
@@ -27,6 +29,7 @@ export function MissionQueue({ workspaceId }: MissionQueueProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
+  const [showDeliverables, setShowDeliverables] = useState(false);
 
   const getTasksByStatus = (status: TaskStatus) =>
     tasks.filter((task) => task.status === status);
@@ -102,14 +105,33 @@ export function MissionQueue({ workspaceId }: MissionQueueProps) {
           <ChevronRight className="w-4 h-4 text-mc-text-secondary" />
           <span className="text-sm font-medium uppercase tracking-wider">Mission Queue</span>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 px-3 py-1.5 bg-mc-accent-pink text-mc-bg rounded text-sm font-medium hover:bg-mc-accent-pink/90"
-        >
-          <Plus className="w-4 h-4" />
-          New Task
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowDeliverables((v) => !v)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+              showDeliverables
+                ? 'bg-mc-accent/20 text-mc-accent border border-mc-accent/40'
+                : 'bg-mc-bg-tertiary text-mc-text-secondary border border-mc-border/50 hover:text-mc-text hover:border-mc-border'
+            }`}
+            title="Toggle deliverables"
+          >
+            <Package className="w-4 h-4" />
+            Deliverables
+          </button>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2 px-3 py-1.5 bg-mc-accent-pink text-mc-bg rounded text-sm font-medium hover:bg-mc-accent-pink/90"
+          >
+            <Plus className="w-4 h-4" />
+            New Task
+          </button>
+        </div>
       </div>
+
+      {/* Deliverables Overview Panel */}
+      {showDeliverables && workspaceId && (
+        <DeliverablesOverview workspaceId={workspaceId} />
+      )}
 
       {/* Kanban Columns */}
       <div className="flex-1 flex gap-3 p-3 overflow-x-auto">
@@ -168,6 +190,8 @@ interface TaskCardProps {
 }
 
 function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
+  const { templates } = useMissionControl();
+
   const priorityStyles = {
     low: 'text-mc-text-secondary',
     normal: 'text-mc-accent',
@@ -183,6 +207,7 @@ function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
   };
 
   const isPlanning = task.status === 'planning';
+  const pipelineInfo = getPipelineStageInfo(task, templates);
 
   return (
     <div
@@ -204,7 +229,39 @@ function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
         <h4 className="text-sm font-medium leading-snug line-clamp-2 mb-3">
           {task.title}
         </h4>
-        
+
+        {/* Pipeline progress bar */}
+        {pipelineInfo && (
+          <div className="mb-3 py-2 px-3 bg-mc-bg/50 rounded-md border border-mc-accent-yellow/20">
+            {/* Segmented bar */}
+            <div className="flex gap-0.5 mb-1.5">
+              {pipelineInfo.roles.map((_, index) => {
+                const isCompleted = pipelineInfo.isComplete || index < pipelineInfo.currentStage - 1;
+                const isCurrent = !pipelineInfo.isComplete && index === pipelineInfo.currentStage - 1;
+                return (
+                  <div
+                    key={index}
+                    className={`h-1.5 rounded-sm flex-1 ${
+                      isCompleted
+                        ? 'bg-mc-accent-green'
+                        : isCurrent
+                        ? 'bg-mc-accent-yellow'
+                        : 'bg-mc-bg-tertiary'
+                    }`}
+                    style={isCurrent ? { boxShadow: '0 0 6px #d29922' } : undefined}
+                  />
+                );
+              })}
+            </div>
+            {/* Stage label */}
+            <span className="text-[10px] font-mono text-mc-text-secondary">
+              {pipelineInfo.isComplete
+                ? `${pipelineInfo.currentRole.emoji} Complete`
+                : `${pipelineInfo.currentRole.emoji} Stage ${pipelineInfo.currentStage}/${pipelineInfo.totalStages}`}
+            </span>
+          </div>
+        )}
+
         {/* Planning mode indicator */}
         {isPlanning && (
           <div className="flex items-center gap-2 mb-3 py-2 px-3 bg-purple-500/10 rounded-md border border-purple-500/20">

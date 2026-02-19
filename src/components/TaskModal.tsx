@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { X, Save, Trash2, Activity, Package, Bot, ClipboardList, Plus } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import { triggerAutoDispatch, shouldTriggerAutoDispatch } from '@/lib/auto-dispatch';
+import { getPipelineStageInfo } from '@/lib/pipeline-utils';
 import { ActivityLog } from './ActivityLog';
 import { DeliverablesList } from './DeliverablesList';
 import { SessionsList } from './SessionsList';
@@ -20,7 +21,7 @@ interface TaskModalProps {
 }
 
 export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
-  const { agents, addTask, updateTask, addEvent } = useMissionControl();
+  const { agents, addTask, updateTask, addEvent, templates: storeTemplates } = useMissionControl();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAgentModal, setShowAgentModal] = useState(false);
   const [usePlanningMode, setUsePlanningMode] = useState(false);
@@ -44,13 +45,18 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
     workflow_template_id: task?.workflow_template_id || '',
   });
 
-  // Fetch deployed templates
+  // Fetch deployed templates (used by the template dropdown selector)
   useEffect(() => {
     fetch('/api/templates?deployed=true')
       .then(res => res.ok ? res.json() : [])
       .then(data => setTemplates(data))
       .catch(() => {});
   }, []);
+
+  // Derive pipeline stage info for display — prefer store templates (populated at app load),
+  // fall back to locally-fetched templates when the store is still empty.
+  const pipelineSourceTemplates = storeTemplates.length > 0 ? storeTemplates : templates;
+  const pipelineInfo = task ? getPipelineStageInfo(task, pipelineSourceTemplates) : null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -204,6 +210,61 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
         <div className="flex-1 overflow-y-auto p-4">
           {/* Overview Tab */}
           {activeTab === 'overview' && (
+            <>
+            {/* Pipeline progress section — only shown for existing tasks with a workflow template */}
+            {task && pipelineInfo && (
+              <div className="mb-4 p-4 bg-mc-bg rounded-lg border border-mc-accent-yellow/30">
+                {/* Header */}
+                <div className="mb-2">
+                  <span className="text-sm font-semibold text-mc-accent-yellow">
+                    {pipelineInfo.templateName}
+                  </span>
+                  <p className="text-xs text-mc-text-secondary mt-0.5">
+                    {pipelineInfo.isComplete
+                      ? 'Pipeline Complete'
+                      : `Stage ${pipelineInfo.currentStage} of ${pipelineInfo.totalStages}`}
+                  </p>
+                </div>
+
+                {/* Stage cells — horizontally scrollable */}
+                <div className="overflow-x-auto">
+                  <div className="flex gap-2 w-max">
+                    {pipelineInfo.roles.map((role, index) => {
+                      const stageNumber = index + 1;
+                      const isPast = !pipelineInfo.isComplete && stageNumber < pipelineInfo.currentStage;
+                      const isCurrent = !pipelineInfo.isComplete && stageNumber === pipelineInfo.currentStage;
+                      // When pipeline is complete every stage gets green styling
+                      const isGreen = pipelineInfo.isComplete || isPast;
+
+                      let cellClass = 'px-3 py-2 rounded border text-xs font-mono whitespace-nowrap ';
+                      let labelPrefix: string;
+
+                      if (isGreen) {
+                        cellClass += 'border-mc-accent-green/40 bg-mc-accent-green/10 text-mc-accent-green';
+                        labelPrefix = '✓ ';
+                      } else if (isCurrent) {
+                        cellClass += 'border-mc-accent-yellow/60 bg-mc-accent-yellow/10 text-mc-accent-yellow';
+                        labelPrefix = '● ';
+                      } else {
+                        cellClass += 'border-mc-border/30 bg-mc-bg-secondary text-mc-text-secondary';
+                        labelPrefix = '○ ';
+                      }
+
+                      return (
+                        <div
+                          key={role.id ?? role.role_slug}
+                          className={cellClass}
+                          style={isCurrent ? { boxShadow: '0 0 8px rgba(210, 153, 34, 0.3)' } : undefined}
+                        >
+                          {labelPrefix}{role.display_name}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-4">
           {/* Title */}
           <div>
@@ -359,6 +420,7 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
             />
           </div>
             </form>
+            </>
           )}
 
           {/* Planning Tab */}

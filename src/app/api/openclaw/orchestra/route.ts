@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { queryOne, queryAll } from '@/lib/db';
+import { getSupabase } from '@/lib/db';
 
 interface OrchestraStatusResponse {
   hasOtherOrchestrators: boolean;
@@ -24,24 +24,27 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get('workspace_id') || 'default';
 
-    // Get all master agents in the workspace
-    const orchestrators = queryAll<{
-      id: string;
-      name: string;
-      role: string;
-      status: string;
-    }>(
-      `SELECT id, name, role, status
-       FROM agents
-       WHERE is_master = 1
-       AND workspace_id = ?
-       AND status != 'offline'
-       ORDER BY created_at ASC`,
-      [workspaceId]
-    );
+    const supabase = getSupabase();
+
+    // Get all master agents in the workspace that are not offline, ordered by creation date
+    const { data: orchestrators, error } = await supabase
+      .from('agents')
+      .select('id, name, role, status')
+      .eq('is_master', true)
+      .eq('workspace_id', workspaceId)
+      .neq('status', 'offline')
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Failed to fetch orchestrators:', error);
+      return NextResponse.json<OrchestraStatusResponse>(
+        { hasOtherOrchestrators: false, orchestratorCount: 0 },
+        { status: 500 }
+      );
+    }
 
     // Exclude the default (first-created) master agent from the count
-    const additionalOrchestrators = orchestrators.slice(1);
+    const additionalOrchestrators = (orchestrators ?? []).slice(1);
     const hasOtherOrchestrators = additionalOrchestrators.length > 0;
 
     return NextResponse.json<OrchestraStatusResponse>({

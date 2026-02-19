@@ -32,6 +32,9 @@ export class OpenClawClient extends EventEmitter {
   private token: string;
   private deviceIdentity: { deviceId: string; publicKeyPem: string; privateKeyPem: string } | null = null;
   private messageHandlers = new Set<(event: MessageEvent) => void>(); // Track all message handlers for cleanup
+  private reconnectDelay: number = 10000;
+  private readonly RECONNECT_BASE = 10000;
+  private readonly RECONNECT_MAX = 120000;
   private readonly MAX_PROCESSED_EVENTS = 1000; // Limit the size of the processed events cache
   private readonly CLEANUP_THRESHOLD = 100; // Number of entries to remove when limit exceeded
   private readonly CACHE_ENTRY_TTL_MS = 60 * 60 * 1000; // 1 hour TTL for cache entries
@@ -199,17 +202,20 @@ export class OpenClawClient extends EventEmitter {
 
         this.ws.onclose = (event) => {
           clearTimeout(connectionTimeout);
-          const wasConnected = this.connected;
           this.connected = false;
           this.authenticated = false;
           this.connecting = null;
           this.messageHandlers.clear(); // Clear handlers on disconnect
           // Note: globalProcessedEvents is NOT cleared as it's shared across all instances
+          // Reject all pending requests immediately — they will never receive a response
+          for (const [, { reject }] of Array.from(this.pendingRequests)) {
+            reject(new Error('WebSocket connection closed'));
+          }
+          this.pendingRequests.clear();
           this.emit('disconnected');
           // Log close reason for debugging
           console.log(`[OpenClaw] Disconnected from Gateway (code: ${event.code}, reason: "${event.reason}", wasClean: ${event.wasClean})`);
-          // Only auto-reconnect if we were previously connected (not on initial connection failure)
-          if (this.autoReconnect && wasConnected) {
+          if (this.autoReconnect) {
             this.scheduleReconnect();
           }
         };
@@ -311,6 +317,7 @@ export class OpenClawClient extends EventEmitter {
                   this.connected = true;
                   this.authenticated = true;
                   this.connecting = null;
+                  this.reconnectDelay = this.RECONNECT_BASE; // Reset backoff on successful connection
                   this.emit('connected');
                   console.log('[OpenClaw] Authenticated successfully');
                   resolve();
@@ -388,18 +395,22 @@ export class OpenClawClient extends EventEmitter {
   private scheduleReconnect(): void {
     if (this.reconnectTimer || !this.autoReconnect) return;
 
+    const jitter = Math.random() * 2000;
+    const delay = this.reconnectDelay + jitter;
+
     this.reconnectTimer = setTimeout(async () => {
       this.reconnectTimer = null;
       if (!this.autoReconnect) return;
 
-      console.log('[OpenClaw] Attempting reconnect...');
+      console.log(`[OpenClaw] Attempting reconnect (delay was ${Math.round(delay)}ms)...`);
       try {
         await this.connect();
       } catch {
         // Don't spam logs on reconnect failure, just schedule another attempt
+        this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.RECONNECT_MAX);
         this.scheduleReconnect();
       }
-    }, 10000); // 10 seconds between reconnect attempts
+    }, delay);
   }
 
   async call<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T> {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOpenClawClient } from '@/lib/openclaw/client';
-import { queryAll } from '@/lib/db';
+import { getSupabase } from '@/lib/db';
 import type { OpenClawSession } from '@/lib/types';
 
 // GET /api/openclaw/sessions - List OpenClaw sessions
@@ -12,23 +12,29 @@ export async function GET(request: NextRequest) {
 
     // If filtering by database fields, query the database
     if (sessionType || status) {
-      let sql = 'SELECT * FROM openclaw_sessions WHERE 1=1';
-      const params: unknown[] = [];
+      const supabase = getSupabase();
+
+      let query = supabase
+        .from('openclaw_sessions')
+        .select('*')
+        .order('created_at', { ascending: false });
 
       if (sessionType) {
-        sql += ' AND session_type = ?';
-        params.push(sessionType);
+        query = query.eq('session_type', sessionType);
       }
 
       if (status) {
-        sql += ' AND status = ?';
-        params.push(status);
+        query = query.eq('status', status);
       }
 
-      sql += ' ORDER BY created_at DESC';
+      const { data: sessions, error } = await query;
 
-      const sessions = queryAll<OpenClawSession>(sql, params);
-      return NextResponse.json(sessions);
+      if (error) {
+        console.error('Failed to fetch openclaw sessions:', error);
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+      }
+
+      return NextResponse.json(sessions as OpenClawSession[]);
     }
 
     // Otherwise, query OpenClaw Gateway for live sessions

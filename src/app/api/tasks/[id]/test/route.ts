@@ -12,7 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { chromium } from 'playwright';
-import { queryOne, queryAll, run } from '@/lib/db';
+import { getSupabase } from '@/lib/db';
 import { v4 as uuidv4 } from 'uuid';
 import { existsSync, mkdirSync, readFileSync } from 'fs';
 import path from 'path';
@@ -79,20 +79,36 @@ export async function POST(
 
   try {
     const { id: taskId } = await params;
+    const supabase = getSupabase();
 
     // Get task
-    const task = queryOne<Task>('SELECT * FROM tasks WHERE id = ?', [taskId]);
+    const { data: task, error: taskError } = await supabase
+      .from('tasks')
+      .select('*')
+      .eq('id', taskId)
+      .maybeSingle();
+
+    if (taskError) {
+      console.error('Error fetching task:', taskError);
+      return NextResponse.json({ error: 'Failed to fetch task' }, { status: 500 });
+    }
     if (!task) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 });
     }
 
     // Get all deliverables (file and url types)
-    const deliverables = queryAll<TaskDeliverable>(
-      'SELECT * FROM task_deliverables WHERE task_id = ? AND deliverable_type IN (?, ?)',
-      [taskId, 'file', 'url']
-    );
+    const { data: deliverables, error: delError } = await supabase
+      .from('task_deliverables')
+      .select('*')
+      .eq('task_id', taskId)
+      .in('deliverable_type', ['file', 'url']);
 
-    if (deliverables.length === 0) {
+    if (delError) {
+      console.error('Error fetching deliverables:', delError);
+      return NextResponse.json({ error: 'Failed to fetch deliverables' }, { status: 500 });
+    }
+
+    if (!deliverables || deliverables.length === 0) {
       return NextResponse.json(
         { error: 'No testable deliverables found (file or url types)' },
         { status: 400 }
@@ -108,12 +124,14 @@ export async function POST(
     const browser = await chromium.launch({ headless: true });
     const results: TestResult[] = [];
 
-    for (const deliverable of deliverables) {
-      const result = await testDeliverable(browser, deliverable, taskId);
-      results.push(result);
+    try {
+      for (const deliverable of deliverables) {
+        const result = await testDeliverable(browser, deliverable as TaskDeliverable, taskId);
+        results.push(result);
+      }
+    } finally {
+      await browser.close();
     }
-
-    await browser.close();
 
     // Determine overall pass/fail
     const passed = results.every(r => r.passed);
@@ -140,15 +158,16 @@ export async function POST(
       ? `Automated test passed - ${results.length} deliverable(s) verified, no issues found`
       : `Automated test failed - ${summary}`;
 
-    run(
-      `INSERT INTO task_activities (id, task_id, activity_type, message, metadata, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        uuidv4(),
-        taskId,
-        passed ? 'test_passed' : 'test_failed',
-        activityMessage,
-        JSON.stringify({ results: results.map(r => ({
+    const now = new Date().toISOString();
+
+    const { error: activityError } = await supabase
+      .from('task_activities')
+      .insert({
+        id: uuidv4(),
+        task_id: taskId,
+        activity_type: passed ? 'test_passed' : 'test_failed',
+        message: activityMessage,
+        metadata: { results: results.map(r => ({
           deliverable: r.deliverable.title,
           type: r.deliverable.type,
           passed: r.passed,
@@ -156,53 +175,59 @@ export async function POST(
           cssErrors: r.cssErrors.length,
           resourceErrors: r.resourceErrors.length,
           screenshot: r.screenshotPath
-        })) }),
-        new Date().toISOString()
-      ]
-    );
+        })) },
+        created_at: now,
+      });
+
+    if (activityError) {
+      console.error('Error logging test activity:', activityError);
+    }
 
     // Update task status based on results
-    const now = new Date().toISOString();
     let newStatus: string | undefined;
 
     if (passed) {
       // Tests passed -> move to review for human approval
-      run(
-        'UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?',
-        ['review', now, taskId]
-      );
+      const { error: updateError } = await supabase
+        .from('tasks')
+        .update({ status: 'review', updated_at: now })
+        .eq('id', taskId);
+
+      if (updateError) {
+        console.error('Error updating task status to review:', updateError);
+      }
       newStatus = 'review';
 
-      run(
-        `INSERT INTO task_activities (id, task_id, activity_type, message, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
-        [
-          uuidv4(),
-          taskId,
-          'status_changed',
-          'Task moved to REVIEW - automated tests passed, awaiting human approval',
-          now
-        ]
-      );
+      await supabase
+        .from('task_activities')
+        .insert({
+          id: uuidv4(),
+          task_id: taskId,
+          activity_type: 'status_changed',
+          message: 'Task moved to REVIEW - automated tests passed, awaiting human approval',
+          created_at: now,
+        });
     } else {
       // Tests failed -> move back to assigned for agent to fix
-      run(
-        'UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?',
-        ['assigned', now, taskId]
-      );
+      const { error: updateError } = await supabase
+        .from('tasks')
+        .update({ status: 'assigned', updated_at: now })
+        .eq('id', taskId);
+
+      if (updateError) {
+        console.error('Error updating task status to assigned:', updateError);
+      }
       newStatus = 'assigned';
 
-      run(
-        `INSERT INTO task_activities (id, task_id, activity_type, message, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
-        [
-          uuidv4(),
-          taskId,
-          'status_changed',
-          'Task moved back to ASSIGNED due to failed automated tests - agent needs to fix issues',
-          now
-        ]
-      );
+      await supabase
+        .from('task_activities')
+        .insert({
+          id: uuidv4(),
+          task_id: taskId,
+          activity_type: 'status_changed',
+          message: 'Task moved back to ASSIGNED due to failed automated tests - agent needs to fix issues',
+          created_at: now,
+        });
     }
 
     const response: TestResponse = {
@@ -381,63 +406,66 @@ async function testDeliverable(
     }
 
     const context = await browser.newContext();
-    const page = await context.newPage();
 
-    // Capture console messages
-    page.on('console', msg => {
-      if (msg.type() === 'error') {
-        consoleErrors.push(msg.text());
-      } else if (msg.type() === 'warning') {
-        consoleWarnings.push(msg.text());
-      }
-    });
+    try {
+      const page = await context.newPage();
 
-    // Capture page errors
-    page.on('pageerror', error => {
-      consoleErrors.push(`Page error: ${error.message}`);
-    });
-
-    // Capture failed resource requests
-    page.on('requestfailed', request => {
-      const url = request.url();
-      const failure = request.failure();
-      const resourceType = request.resourceType();
-
-      let type: ResourceError['type'] = 'other';
-      if (resourceType === 'image') type = 'image';
-      else if (resourceType === 'script') type = 'script';
-      else if (resourceType === 'stylesheet') type = 'stylesheet';
-      else if (resourceType === 'document') type = 'link';
-
-      resourceErrors.push({
-        type,
-        url,
-        error: failure?.errorText || 'Request failed'
+      // Capture console messages
+      page.on('console', msg => {
+        if (msg.type() === 'error') {
+          consoleErrors.push(msg.text());
+        } else if (msg.type() === 'warning') {
+          consoleWarnings.push(msg.text());
+        }
       });
-    });
 
-    // Load page
-    const response = await page.goto(testUrl, {
-      waitUntil: 'networkidle',
-      timeout: 30000
-    });
+      // Capture page errors
+      page.on('pageerror', error => {
+        consoleErrors.push(`Page error: ${error.message}`);
+      });
 
-    httpStatus = response?.status() || null;
+      // Capture failed resource requests
+      page.on('requestfailed', request => {
+        const url = request.url();
+        const failure = request.failure();
+        const resourceType = request.resourceType();
 
-    // For HTTP URLs, check for non-success status codes
-    if (isHttpUrl(testUrl) && httpStatus && (httpStatus < 200 || httpStatus >= 400)) {
-      consoleErrors.push(`HTTP error: Server returned status ${httpStatus}`);
+        let type: ResourceError['type'] = 'other';
+        if (resourceType === 'image') type = 'image';
+        else if (resourceType === 'script') type = 'script';
+        else if (resourceType === 'stylesheet') type = 'stylesheet';
+        else if (resourceType === 'document') type = 'link';
+
+        resourceErrors.push({
+          type,
+          url,
+          error: failure?.errorText || 'Request failed'
+        });
+      });
+
+      // Load page
+      const response = await page.goto(testUrl, {
+        waitUntil: 'networkidle',
+        timeout: 30000
+      });
+
+      httpStatus = response?.status() || null;
+
+      // For HTTP URLs, check for non-success status codes
+      if (isHttpUrl(testUrl) && httpStatus && (httpStatus < 200 || httpStatus >= 400)) {
+        consoleErrors.push(`HTTP error: Server returned status ${httpStatus}`);
+      }
+
+      // Wait a bit for any async JS to run
+      await page.waitForTimeout(1000);
+
+      // Take screenshot
+      const screenshotFilename = `${taskId}-${deliverable.id}-${Date.now()}.png`;
+      screenshotPath = path.join(SCREENSHOTS_DIR, screenshotFilename);
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+    } finally {
+      await context.close();
     }
-
-    // Wait a bit for any async JS to run
-    await page.waitForTimeout(1000);
-
-    // Take screenshot
-    const screenshotFilename = `${taskId}-${deliverable.id}-${Date.now()}.png`;
-    screenshotPath = path.join(SCREENSHOTS_DIR, screenshotFilename);
-    await page.screenshot({ path: screenshotPath, fullPage: true });
-
-    await context.close();
 
     // Determine pass/fail
     // Fail conditions: console errors, CSS errors, or resource loading errors
@@ -488,26 +516,44 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  try {
   const { id: taskId } = await params;
+  const supabase = getSupabase();
 
-  const task = queryOne<Task>('SELECT * FROM tasks WHERE id = ?', [taskId]);
+  const { data: task, error: taskError } = await supabase
+    .from('tasks')
+    .select('*')
+    .eq('id', taskId)
+    .maybeSingle();
+
+  if (taskError) {
+    console.error('Error fetching task:', taskError);
+    return NextResponse.json({ error: 'Failed to fetch task' }, { status: 500 });
+  }
   if (!task) {
     return NextResponse.json({ error: 'Task not found' }, { status: 404 });
   }
 
-  const deliverables = queryAll<TaskDeliverable>(
-    'SELECT * FROM task_deliverables WHERE task_id = ? AND deliverable_type IN (?, ?)',
-    [taskId, 'file', 'url']
-  );
+  const { data: deliverables, error: delError } = await supabase
+    .from('task_deliverables')
+    .select('*')
+    .eq('task_id', taskId)
+    .in('deliverable_type', ['file', 'url']);
 
-  const fileDeliverables = deliverables.filter(d => d.deliverable_type === 'file');
-  const urlDeliverables = deliverables.filter(d => d.deliverable_type === 'url');
+  if (delError) {
+    console.error('Error fetching deliverables:', delError);
+    return NextResponse.json({ error: 'Failed to fetch deliverables' }, { status: 500 });
+  }
+
+  const allDeliverables = (deliverables ?? []) as TaskDeliverable[];
+  const fileDeliverables = allDeliverables.filter(d => d.deliverable_type === 'file');
+  const urlDeliverables = allDeliverables.filter(d => d.deliverable_type === 'url');
 
   return NextResponse.json({
     taskId,
     taskTitle: task.title,
     taskStatus: task.status,
-    deliverableCount: deliverables.length,
+    deliverableCount: allDeliverables.length,
     testableFiles: fileDeliverables
       .filter(d => d.path?.endsWith('.html') || d.path?.endsWith('.htm'))
       .map(d => ({ id: d.id, title: d.title, path: d.path })),
@@ -529,4 +575,8 @@ export async function GET(
       returns: 'Test results with pass/fail, console errors, CSS errors, resource errors, and screenshots'
     }
   });
+  } catch (error) {
+    console.error('Failed to get test info:', error);
+    return NextResponse.json({ error: 'Failed to get test info' }, { status: 500 });
+  }
 }

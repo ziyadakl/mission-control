@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+
+# Build output
+.next/
+dist/
+build/
+out/
+
+# Database files
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Secrets and credentials
+.env*
+*.pem
+
+# Lock files
+package-lock.json
+
+# Git
+.git/
+
+# Coverage
+coverage/
+
+# Backups
+*.backup
+*.bak
+
+# IDE / local
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Cross-tool configs (not needed in context)
+.kilocode/
+opencode.json
+
+# Dev notes
+thoughts/
+
+# Static assets (images don't help Claude)
+public/images/
+docs/images/

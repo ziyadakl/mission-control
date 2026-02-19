@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { getSupabase } from '@/lib/db';
 import { getOpenClawClient } from '@/lib/openclaw/client';
 import { extractJSON } from '@/lib/planning-utils';
 
@@ -18,14 +18,19 @@ export async function POST(
       return NextResponse.json({ error: 'Answer is required' }, { status: 400 });
     }
 
+    const supabase = getSupabase();
+
     // Get task
-    const task = getDb().prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) as {
-      id: string;
-      title: string;
-      description: string;
-      planning_session_key?: string;
-      planning_messages?: string;
-    } | undefined;
+    const { data: task, error: taskError } = await supabase
+      .from('tasks')
+      .select('id, title, description, planning_session_key, planning_messages')
+      .eq('id', taskId)
+      .maybeSingle();
+
+    if (taskError) {
+      console.error('Failed to get task:', taskError);
+      return NextResponse.json({ error: 'Failed to submit answer: ' + taskError.message }, { status: 500 });
+    }
 
     if (!task) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 });
@@ -36,7 +41,7 @@ export async function POST(
     }
 
     // Build the answer message
-    const answerText = answer === 'other' && otherText 
+    const answerText = answer === 'other' && otherText
       ? `Other: ${otherText}`
       : answer;
 
@@ -81,8 +86,8 @@ If planning is complete, respond with JSON:
   }
 }`;
 
-    // Parse existing messages
-    const messages = task.planning_messages ? JSON.parse(task.planning_messages) : [];
+    // planning_messages is JSONB - already parsed by Supabase, no JSON.parse needed
+    const messages = Array.isArray(task.planning_messages) ? task.planning_messages : [];
     messages.push({ role: 'user', content: answerText, timestamp: Date.now() });
 
     // Connect to OpenClaw and send the answer
@@ -107,15 +112,19 @@ If planning is complete, respond with JSON:
       return NextResponse.json({ error: 'Failed to send answer to orchestrator: ' + (sendError as Error).message }, { status: 500 });
     }
 
-    // Update messages in DB
-    getDb().prepare(`
-      UPDATE tasks SET planning_messages = ? WHERE id = ?
-    `).run(JSON.stringify(messages), taskId);
+    // Update messages in DB - pass as object directly (JSONB auto-serializes)
+    const { error: updateError } = await supabase
+      .from('tasks')
+      .update({ planning_messages: messages })
+      .eq('id', taskId);
+
+    if (updateError) {
+      console.error('[Planning Answer] Failed to update messages:', updateError);
+    }
 
     // Poll for response via OpenClaw API - removed aggressive polling
     // Return immediately and let frontend poll for updates
     // This eliminates 30 OpenClaw API calls per answer submission
-
 
     return NextResponse.json({
       success: true,

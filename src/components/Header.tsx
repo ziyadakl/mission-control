@@ -1,18 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Zap, Settings, ChevronLeft, LayoutGrid } from 'lucide-react';
+import { Zap, Settings, ChevronLeft, LayoutGrid, BarChart2 } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import { format } from 'date-fns';
 import type { Workspace } from '@/lib/types';
 
 interface HeaderProps {
   workspace?: Workspace;
+  showStatsTray?: boolean;
+  onToggleStats?: () => void;
 }
 
-export function Header({ workspace }: HeaderProps) {
+export function Header({ workspace, showStatsTray, onToggleStats }: HeaderProps) {
   const router = useRouter();
   const { agents, tasks, isOnline } = useMissionControl();
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -47,6 +49,34 @@ export function Header({ workspace }: HeaderProps) {
   const workingAgents = agents.filter((a) => a.status === 'working').length;
   const activeAgents = workingAgents + activeSubAgents;
   const tasksInQueue = tasks.filter((t) => t.status !== 'done' && t.status !== 'review').length;
+
+  // todayMidnight only changes once per day — key on datestring, not the full timestamp
+  const todayMidnight = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTime.toDateString()]);
+
+  // Recompute stats only when tasks list or the calendar day changes (not every clock tick)
+  const { doneCount, nonPlanningCount, donePercent, pipelineCount, todayCount } = useMemo(() => {
+    let done = 0, nonPlanning = 0, pipeline = 0, today = 0;
+    for (const t of tasks) {
+      if (t.status !== 'planning') nonPlanning++;
+      if (t.status === 'done') {
+        done++;
+        if (new Date(t.updated_at) >= todayMidnight) today++;
+      }
+      if (t.workflow_template_id && t.status !== 'done' && t.status !== 'review') pipeline++;
+    }
+    return {
+      doneCount: done,
+      nonPlanningCount: nonPlanning,
+      donePercent: nonPlanning > 0 ? Math.round((done / nonPlanning) * 100) : 0,
+      pipelineCount: pipeline,
+      todayCount: today,
+    };
+  }, [tasks, todayMidnight]);
 
   return (
     <header className="h-14 bg-mc-bg-secondary border-b border-mc-border flex items-center justify-between px-4">
@@ -88,15 +118,39 @@ export function Header({ workspace }: HeaderProps) {
 
       {/* Center: Stats - only show in workspace view */}
       {workspace && (
-        <div className="flex items-center gap-8">
+        <div className="flex items-center gap-4">
           <div className="text-center">
-            <div className="text-2xl font-bold text-mc-accent-cyan">{activeAgents}</div>
-            <div className="text-xs text-mc-text-secondary uppercase">Agents Active</div>
+            <div className="text-lg font-bold text-mc-accent-cyan">{activeAgents}</div>
+            <div className="text-[10px] text-mc-text-secondary uppercase tracking-wider font-mono">Agents Active</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-mc-accent-purple">{tasksInQueue}</div>
-            <div className="text-xs text-mc-text-secondary uppercase">Tasks in Queue</div>
+            <div className="text-lg font-bold text-mc-accent-purple">{tasksInQueue}</div>
+            <div className="text-[10px] text-mc-text-secondary uppercase tracking-wider font-mono">Queue</div>
           </div>
+          <div className="text-center">
+            <div className="text-lg font-bold text-mc-accent-green">{donePercent}%</div>
+            <div className="text-[10px] text-mc-text-secondary uppercase tracking-wider font-mono">Done %</div>
+          </div>
+          <div className="text-center">
+            <div className="text-lg font-bold text-mc-accent-yellow">{pipelineCount}</div>
+            <div className="text-[10px] text-mc-text-secondary uppercase tracking-wider font-mono">Pipelines</div>
+          </div>
+          <div className="text-center">
+            <div className="text-lg font-bold text-mc-accent-pink">{todayCount}</div>
+            <div className="text-[10px] text-mc-text-secondary uppercase tracking-wider font-mono">Today</div>
+          </div>
+          <button
+            onClick={onToggleStats}
+            className={`p-1.5 rounded transition-colors ${
+              showStatsTray
+                ? 'bg-mc-accent/20 text-mc-accent'
+                : 'text-mc-text-secondary hover:text-mc-text'
+            }`}
+            title="Toggle Stats"
+            aria-label="Toggle Stats"
+          >
+            <BarChart2 className="w-4 h-4" />
+          </button>
         </div>
       )}
 

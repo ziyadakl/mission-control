@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { getSupabase } from '@/lib/db';
 import type { PlanningQuestion, PlanningCategory } from '@/lib/types';
 
 // Generate markdown spec from answered questions
 function generateSpecMarkdown(task: { title: string; description?: string }, questions: PlanningQuestion[]): string {
   const lines: string[] = [];
-  
+
   lines.push(`# ${task.title}`);
   lines.push('');
   lines.push('**Status:** SPEC LOCKED ✅');
   lines.push('');
-  
+
   if (task.description) {
     lines.push('## Original Request');
     lines.push(task.description);
@@ -67,39 +67,67 @@ export async function POST(
   const { id: taskId } = await params;
 
   try {
+    const supabase = getSupabase();
+
     // Get task
-    const task = getDb().prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) as { id: string; title: string; description?: string; status: string } | undefined;
+    const { data: task, error: taskError } = await supabase
+      .from('tasks')
+      .select('id, title, description, status')
+      .eq('id', taskId)
+      .maybeSingle();
+
+    if (taskError) {
+      console.error('Failed to get task:', taskError);
+      return NextResponse.json({ error: 'Failed to approve spec' }, { status: 500 });
+    }
+
     if (!task) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 });
     }
 
     // Check if already locked
-    const existingSpec = getDb().prepare(
-      'SELECT * FROM planning_specs WHERE task_id = ?'
-    ).get(taskId);
+    const { data: existingSpec, error: specCheckError } = await supabase
+      .from('planning_specs')
+      .select('id')
+      .eq('task_id', taskId)
+      .maybeSingle();
+
+    if (specCheckError) {
+      console.error('Failed to check existing spec:', specCheckError);
+      return NextResponse.json({ error: 'Failed to approve spec' }, { status: 500 });
+    }
 
     if (existingSpec) {
       return NextResponse.json({ error: 'Spec already locked' }, { status: 400 });
     }
 
     // Get all questions
-    const questions = getDb().prepare(
-      'SELECT * FROM planning_questions WHERE task_id = ? ORDER BY sort_order'
-    ).all(taskId) as PlanningQuestion[];
+    const { data: questions, error: questionsError } = await supabase
+      .from('planning_questions')
+      .select('*')
+      .eq('task_id', taskId)
+      .order('sort_order', { ascending: true });
+
+    if (questionsError) {
+      console.error('Failed to get planning questions:', questionsError);
+      return NextResponse.json({ error: 'Failed to approve spec' }, { status: 500 });
+    }
+
+    const allQuestions = (questions ?? []) as PlanningQuestion[];
 
     // Check if all questions are answered
-    const unanswered = questions.filter(q => !q.answer);
+    const unanswered = allQuestions.filter(q => !q.answer);
     if (unanswered.length > 0) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'All questions must be answered before locking',
         unanswered: unanswered.length
       }, { status: 400 });
     }
 
-    // Parse options for each question
-    const parsedQuestions = questions.map(q => ({
+    // options is JSONB in Supabase - already parsed, no JSON.parse needed
+    const parsedQuestions = allQuestions.map(q => ({
       ...q,
-      options: q.options ? JSON.parse(q.options as unknown as string) : undefined
+      options: q.options ?? undefined,
     }));
 
     // Generate spec markdown
@@ -107,29 +135,61 @@ export async function POST(
 
     // Create spec record
     const specId = crypto.randomUUID();
-    getDb().prepare(`
-      INSERT INTO planning_specs (id, task_id, spec_markdown, locked_at)
-      VALUES (?, ?, ?, datetime('now'))
-    `).run(specId, taskId, specMarkdown);
+    const { error: insertSpecError } = await supabase
+      .from('planning_specs')
+      .insert({
+        id: specId,
+        task_id: taskId,
+        spec_markdown: specMarkdown,
+        locked_at: new Date().toISOString(),
+      });
+
+    if (insertSpecError) {
+      console.error('Failed to create planning spec:', insertSpecError);
+      return NextResponse.json({ error: 'Failed to approve spec' }, { status: 500 });
+    }
 
     // Update task description with spec and move to inbox
-    getDb().prepare(`
-      UPDATE tasks 
-      SET description = ?, status = 'inbox', updated_at = datetime('now')
-      WHERE id = ?
-    `).run(specMarkdown, taskId);
+    const { error: updateTaskError } = await supabase
+      .from('tasks')
+      .update({
+        description: specMarkdown,
+        status: 'inbox',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', taskId);
+
+    if (updateTaskError) {
+      console.error('Failed to update task:', updateTaskError);
+      return NextResponse.json({ error: 'Failed to approve spec' }, { status: 500 });
+    }
 
     // Log activity
     const activityId = crypto.randomUUID();
-    getDb().prepare(`
-      INSERT INTO task_activities (id, task_id, activity_type, message)
-      VALUES (?, ?, 'status_changed', 'Planning complete - spec locked and moved to inbox')
-    `).run(activityId, taskId);
+    const { error: activityError } = await supabase
+      .from('task_activities')
+      .insert({
+        id: activityId,
+        task_id: taskId,
+        activity_type: 'status_changed',
+        message: 'Planning complete - spec locked and moved to inbox',
+      });
+
+    if (activityError) {
+      console.error('Failed to log activity:', activityError);
+    }
 
     // Get the created spec
-    const spec = getDb().prepare(
-      'SELECT * FROM planning_specs WHERE id = ?'
-    ).get(specId);
+    const { data: spec, error: fetchSpecError } = await supabase
+      .from('planning_specs')
+      .select('*')
+      .eq('id', specId)
+      .single();
+
+    if (fetchSpecError) {
+      console.error('Failed to fetch created spec:', fetchSpecError);
+      return NextResponse.json({ error: 'Failed to approve spec' }, { status: 500 });
+    }
 
     return NextResponse.json({
       success: true,

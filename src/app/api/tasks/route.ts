@@ -1,73 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { queryAll, queryOne, run } from '@/lib/db';
+import { getSupabase } from '@/lib/db';
 import { broadcast } from '@/lib/events';
 import { CreateTaskSchema } from '@/lib/validation';
-import type { Task, CreateTaskRequest, Agent } from '@/lib/types';
+import type { CreateTaskRequest } from '@/lib/types';
 
 // GET /api/tasks - List all tasks with optional filters
 export async function GET(request: NextRequest) {
   try {
+    const supabase = getSupabase();
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
+    const priority = searchParams.get('priority');
     const businessId = searchParams.get('business_id');
     const workspaceId = searchParams.get('workspace_id');
     const assignedAgentId = searchParams.get('assigned_agent_id');
 
-    let sql = `
-      SELECT
-        t.*,
-        aa.name as assigned_agent_name,
-        aa.avatar_emoji as assigned_agent_emoji,
-        ca.name as created_by_agent_name
-      FROM tasks t
-      LEFT JOIN agents aa ON t.assigned_agent_id = aa.id
-      LEFT JOIN agents ca ON t.created_by_agent_id = ca.id
-      WHERE 1=1
-    `;
-    const params: unknown[] = [];
+    const rawLimit = parseInt(searchParams.get('limit') || '200', 10);
+    const limit = Math.min(Math.max(isNaN(rawLimit) ? 200 : rawLimit, 1), 200);
 
-    if (status) {
-      // Support comma-separated status values (e.g., status=inbox,testing,in_progress)
-      const statuses = status.split(',').map(s => s.trim()).filter(Boolean);
-      if (statuses.length === 1) {
-        sql += ' AND t.status = ?';
-        params.push(statuses[0]);
-      } else if (statuses.length > 1) {
-        sql += ` AND t.status IN (${statuses.map(() => '?').join(',')})`;
-        params.push(...statuses);
-      }
-    }
-    if (businessId) {
-      sql += ' AND t.business_id = ?';
-      params.push(businessId);
-    }
-    if (workspaceId) {
-      sql += ' AND t.workspace_id = ?';
-      params.push(workspaceId);
-    }
-    if (assignedAgentId) {
-      sql += ' AND t.assigned_agent_id = ?';
-      params.push(assignedAgentId);
+    // Use the RPC function that returns tasks with joined agent info
+    const { data: tasks, error } = await supabase.rpc('get_tasks_with_agents', {
+      p_workspace_id: workspaceId || null,
+      p_business_id: businessId || null,
+      p_status: status || null,
+      p_assigned_agent_id: assignedAgentId || null,
+      p_priority: priority || null,
+    });
+
+    if (error) {
+      console.error('Failed to fetch tasks:', error);
+      return NextResponse.json({ error: 'Failed to fetch tasks' }, { status: 500 });
     }
 
-    sql += ' ORDER BY t.created_at DESC';
+    // Apply the limit client-side since the RPC may not support it directly
+    const limitedTasks = (tasks ?? []).slice(0, limit);
 
-    const tasks = queryAll<Task & { assigned_agent_name?: string; assigned_agent_emoji?: string; created_by_agent_name?: string }>(sql, params);
-
-    // Transform to include nested agent info
-    const transformedTasks = tasks.map((task) => ({
-      ...task,
-      assigned_agent: task.assigned_agent_id
-        ? {
-            id: task.assigned_agent_id,
-            name: task.assigned_agent_name,
-            avatar_emoji: task.assigned_agent_emoji,
-          }
-        : undefined,
-    }));
-
-    return NextResponse.json(transformedTasks);
+    return NextResponse.json(limitedTasks);
   } catch (error) {
     console.error('Failed to fetch tasks:', error);
     return NextResponse.json({ error: 'Failed to fetch tasks' }, { status: 500 });
@@ -77,9 +46,8 @@ export async function GET(request: NextRequest) {
 // POST /api/tasks - Create a new task
 export async function POST(request: NextRequest) {
   try {
+    const supabase = getSupabase();
     const body: CreateTaskRequest = await request.json();
-    console.log('[POST /api/tasks] Received body:', JSON.stringify(body));
-
     // Validate input with Zod
     const validation = CreateTaskSchema.safeParse(body);
     if (!validation.success) {
@@ -90,61 +58,73 @@ export async function POST(request: NextRequest) {
     }
 
     const validatedData = validation.data;
-
     const id = uuidv4();
     const now = new Date().toISOString();
 
     const workspaceId = validatedData.workspace_id || 'default';
     const status = validatedData.status || 'inbox';
-    
-    run(
-      `INSERT INTO tasks (id, title, description, status, priority, assigned_agent_id, created_by_agent_id, workspace_id, business_id, due_date, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
+
+    const { error: insertError } = await supabase
+      .from('tasks')
+      .insert({
         id,
-        validatedData.title,
-        validatedData.description || null,
+        title: validatedData.title,
+        description: validatedData.description || null,
         status,
-        validatedData.priority || 'normal',
-        validatedData.assigned_agent_id || null,
-        validatedData.created_by_agent_id || null,
-        workspaceId,
-        validatedData.business_id || 'default',
-        validatedData.due_date || null,
-        now,
-        now,
-      ]
-    );
+        priority: validatedData.priority || 'normal',
+        assigned_agent_id: validatedData.assigned_agent_id || null,
+        created_by_agent_id: validatedData.created_by_agent_id || null,
+        workspace_id: workspaceId,
+        due_date: validatedData.due_date || null,
+        created_at: now,
+        updated_at: now,
+      });
+
+    if (insertError) {
+      console.error('Failed to create task:', insertError);
+      return NextResponse.json({ error: 'Failed to create task' }, { status: 500 });
+    }
 
     // Log event
     let eventMessage = `New task: ${validatedData.title}`;
     if (validatedData.created_by_agent_id) {
-      const creator = queryOne<Agent>('SELECT name FROM agents WHERE id = ?', [validatedData.created_by_agent_id]);
+      const { data: creator } = await supabase
+        .from('agents')
+        .select('name')
+        .eq('id', validatedData.created_by_agent_id)
+        .maybeSingle();
       if (creator) {
         eventMessage = `${creator.name} created task: ${validatedData.title}`;
       }
     }
 
-    run(
-      `INSERT INTO events (id, type, agent_id, task_id, message, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [uuidv4(), 'task_created', body.created_by_agent_id || null, id, eventMessage, now]
-    );
+    const { error: eventError } = await supabase
+      .from('events')
+      .insert({
+        id: uuidv4(),
+        type: 'task_created',
+        agent_id: body.created_by_agent_id || null,
+        task_id: id,
+        message: eventMessage,
+        created_at: now,
+      });
 
-    // Fetch created task with all joined fields
-    const task = queryOne<Task>(
-      `SELECT t.*,
-        aa.name as assigned_agent_name,
-        aa.avatar_emoji as assigned_agent_emoji,
-        ca.name as created_by_agent_name,
-        ca.avatar_emoji as created_by_agent_emoji
-       FROM tasks t
-       LEFT JOIN agents aa ON t.assigned_agent_id = aa.id
-       LEFT JOIN agents ca ON t.created_by_agent_id = ca.id
-       WHERE t.id = ?`,
-      [id]
-    );
-    
+    if (eventError) {
+      console.error('Failed to log task_created event:', eventError);
+    }
+
+    // Fetch created task with all joined fields via RPC
+    const { data: taskResult, error: fetchError } = await supabase.rpc('get_task_by_id', {
+      p_task_id: id,
+    });
+
+    if (fetchError || !taskResult) {
+      console.error('Failed to fetch created task via RPC, returning minimal response:', fetchError);
+      return NextResponse.json({ id, title: validatedData.title, status, workspace_id: workspaceId, created_at: now, updated_at: now }, { status: 201 });
+    }
+
+    const task = Array.isArray(taskResult) ? taskResult[0] : taskResult;
+
     // Broadcast task creation via SSE
     if (task) {
       broadcast({
@@ -152,7 +132,7 @@ export async function POST(request: NextRequest) {
         payload: task,
       });
     }
-    
+
     return NextResponse.json(task, { status: 201 });
   } catch (error) {
     console.error('Failed to create task:', error);

@@ -1,62 +1,17 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
-import { schema } from './schema';
-import { runMigrations } from './migrations';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const DB_PATH = process.env.DATABASE_PATH || path.join(process.cwd(), 'mission-control.db');
+const globalForSupabase = global as unknown as { supabase?: SupabaseClient };
 
-let db: Database.Database | null = null;
-
-export function getDb(): Database.Database {
-  if (!db) {
-    const isNewDb = !fs.existsSync(DB_PATH);
-    
-    db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
-
-    // Initialize base schema (creates tables if they don't exist)
-    db.exec(schema);
-
-    // Run migrations for schema updates
-    // This handles both new and existing databases
-    runMigrations(db);
-    
-    if (isNewDb) {
-      console.log('[DB] New database created at:', DB_PATH);
+export function getSupabase(): SupabaseClient {
+  if (!globalForSupabase.supabase) {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) {
+      throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY env vars');
     }
+    globalForSupabase.supabase = createClient(url, key, {
+      auth: { persistSession: false },
+    });
   }
-  return db;
+  return globalForSupabase.supabase;
 }
-
-export function closeDb(): void {
-  if (db) {
-    db.close();
-    db = null;
-  }
-}
-
-// Type-safe query helpers
-export function queryAll<T>(sql: string, params: unknown[] = []): T[] {
-  const stmt = getDb().prepare(sql);
-  return stmt.all(...params) as T[];
-}
-
-export function queryOne<T>(sql: string, params: unknown[] = []): T | undefined {
-  const stmt = getDb().prepare(sql);
-  return stmt.get(...params) as T | undefined;
-}
-
-export function run(sql: string, params: unknown[] = []): Database.RunResult {
-  const stmt = getDb().prepare(sql);
-  return stmt.run(...params);
-}
-
-export function transaction<T>(fn: () => T): T {
-  const db = getDb();
-  return db.transaction(fn)();
-}
-
-// Export migration utilities for CLI use
-export { runMigrations, getMigrationStatus } from './migrations';

@@ -118,7 +118,6 @@ export interface WorkspaceStats {
   id: string;
   name: string;
   slug: string;
-  icon: string;
   taskCounts: {
     planning: number;
     inbox: number;

@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, realpathSync } from 'fs';
 import path from 'path';
 
 export async function GET(request: NextRequest) {
@@ -29,20 +29,34 @@ export async function GET(request: NextRequest) {
     process.env.PROJECTS_PATH?.replace(/^~/, process.env.HOME || ''),
   ].filter(Boolean) as string[];
 
-  const isAllowed = allowedPaths.some(allowed =>
-    normalizedPath.startsWith(path.normalize(allowed))
-  );
-
-  if (!isAllowed) {
-    return NextResponse.json({ error: 'Path not allowed' }, { status: 403 });
-  }
-
   if (!existsSync(normalizedPath)) {
     return NextResponse.json({ error: 'File not found' }, { status: 404 });
   }
 
+  // Resolve symlinks to real path before checking allowlist
+  let resolvedPath: string;
   try {
-    const content = readFileSync(normalizedPath, 'utf-8');
+    resolvedPath = realpathSync(normalizedPath);
+  } catch {
+    return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+  }
+
+  const isAllowed = allowedPaths.some(allowed => {
+    try {
+      const resolvedBase = realpathSync(path.normalize(allowed));
+      return resolvedPath.startsWith(resolvedBase + path.sep) || resolvedPath === resolvedBase;
+    } catch {
+      return false;
+    }
+  });
+
+  if (!isAllowed) {
+    console.warn(`[SECURITY] Path traversal attempt blocked in preview: ${normalizedPath} -> ${resolvedPath}`);
+    return NextResponse.json({ error: 'Path not allowed' }, { status: 403 });
+  }
+
+  try {
+    const content = readFileSync(resolvedPath, 'utf-8');
     return new NextResponse(content, {
       headers: {
         'Content-Type': 'text/html',
